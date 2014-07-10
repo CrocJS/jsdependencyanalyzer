@@ -67,6 +67,8 @@ function processError(error) {
     else {
         console.log('Error!\n' + error.message);
     }
+
+    cache.clear();
 }
 
 process.on('uncaughtException', processError);

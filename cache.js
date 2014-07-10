@@ -10,6 +10,10 @@ module.exports = {
     __cache: {},
     __newCache: {},
     __files: {},
+    clear: function() {
+        fs.unlinkSync(this.__getFileName());
+        this.__cacheCleared = true;
+    },
     getData: function(section, file, defaults) {
         var sectionData = this.__cache[section] || (this.__cache[section] = {});
         var newSectionData = this.__newCache[section] || (this.__newCache[section] = {});
@@ -73,6 +77,10 @@ module.exports = {
         }.bind(this));
     },
     save: function() {
+        if (this.__cacheCleared) {
+            return Q();
+        }
+
         var data = {
             cache: this.__newCache
         };
