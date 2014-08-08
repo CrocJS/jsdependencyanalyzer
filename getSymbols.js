@@ -300,6 +300,16 @@ Parser.prototype = {
                 }
             }, this);
         }
+
+        if (this.__options.jsSymbolsMap) {
+            _.forOwn(this.__options.jsSymbolsMap, function(symbol, pattern) {
+                if (js.indexOf(pattern) !== -1) {
+                    (Array.isArray(symbol) ? symbol : [symbol]).forEach(function(curSymbol) {
+                        this.__rawSymbols.push({symbol: curSymbol, depType: 'use'});
+                    }, this);
+                }
+            }, this);
+        }
     }
 };
 
@@ -311,5 +321,8 @@ Parser.prototype = {
  * @returns {Q}
  */
 exports.parse = function parseSymbols(file, existedSymbols, packages, options) {
+    if (program.missfile && !fs.existsSync(file)) {
+        return Q({});
+    }
     return new Parser(file, existedSymbols, packages, options).parse();
 };

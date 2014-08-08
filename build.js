@@ -9,6 +9,7 @@ var library = require('./library');
 var targetBuilder = require('./targetBuilder');
 var http = require('http');
 var cache = require('./cache');
+var mkdirp = require('mkdirp');
 
 var commaSeparated = function(x) { return _.compact(x.split(',')); };
 
@@ -24,12 +25,14 @@ program
     .option('-j, --jsincludes [jsincludes]', 'Print generated js_includes for packages')
     .option('--time', 'Print executing time')
     .option('--nocache', 'Build without cache')
+    .option('--copyto [copyto]', 'Copy result files to folder')
+    .option('--missfile', 'Ignore no file errors')
     .option('--nodirchange', 'Sources directories havn\'t changed')
-    .option('--changed [changed]', 'Sources files which have benn changed. Specify "no" if there is no changed files.',
+    .option('--changed [changed]', 'Sources files which have benn changed. Specify --changed= if there is no changed files.',
         commaSeparated)
-    .option('--added [added]', 'Sources files which have benn added. Specify "no" if there is no added files.',
+    .option('--added [added]', 'Sources files which have benn added. Specify --added= if there is no added files.',
         commaSeparated)
-    .option('--removed [removed]', 'Sources files which have benn removed. Specify "no" if there is no removed files.',
+    .option('--removed [removed]', 'Sources files which have benn removed. Specify --removed= if there is no removed files.',
         commaSeparated)
     .parse(process.argv);
 
@@ -384,6 +387,28 @@ if (program.changed) {
                             });
                         }
                     });
+                });
+            });
+        }
+
+        //copyto
+        if (program.copyto) {
+            var copyFiles = [];
+            results.forEach(function(result) {
+                copyFiles = copyFiles.concat(result.files);
+                if (result.packages) {
+                    _.forOwn(result.packages, function(files) {
+                        copyFiles = copyFiles.concat(files);
+                    });
+                }
+            });
+            copyFiles.forEach(function(file) {
+                file = file.substr(1);
+                var dest = path.resolve(program.copyto, file);
+                mkdirp(path.dirname(dest), function(err) {
+                    if (!err) {
+                        fs.createReadStream(path.resolve(sitePath, file)).pipe(fs.createWriteStream(dest));
+                    }
                 });
             });
         }
