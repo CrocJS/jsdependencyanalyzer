@@ -1,0 +1,10 @@
+{
+    "name"        : "sotmarket/jsdependencyanalyzer",
+    "type"        : "library",
+    "description" : "Анализатор зависимостей JS файлов",
+    "authors"     : [{
+        "name"  : "Артём Бахарев",
+        "email" : "a.bakharev@sotmarket.ru",
+        "role"  : "Developer"
+    }]
+}
