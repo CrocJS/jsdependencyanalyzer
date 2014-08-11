@@ -13,14 +13,14 @@ module.exports = {
      */
     normalizePath: function(target, path_, addSlash) {
         if (path_.indexOf('!!') === 0) {
-            path_ = '/' + path.relative(path.resolve(program.path, target.site), path_.substr(2));
+            path_ = '/' + path.relative(target.root, path_.substr(2));
         }
-        var root = target ? (path_.indexOf('/') === 0 ? target.site : target.root) : null;
+        var root = target ? (path_.indexOf('/') === 0 ? target.root : target.js) : null;
         if ((root === '' || root) && path_.indexOf('/') === 0) {
             path_ = path_.substr(1);
         }
 
-        var normalized = ((root === '' || root) ? path.resolve(program.path, root, path_) : path.normalize(path_)).replace(/[\\\/]+/g, '/');
+        var normalized = ((root === '' || root) ? path.resolve(root, path_) : path.normalize(path_)).replace(/[\\\/]+/g, '/');
         if (addSlash && normalized[normalized.length - 1] !== '/') {
             normalized += '/';
         }

@@ -24,7 +24,7 @@ var TargetBuilder = function(target, ignoreFiles) {
 
 TargetBuilder.prototype = {
     build: function() {
-        return symbolsMap.create({root: this.__target.root, sources: this.__target.sources})
+        return symbolsMap.create({js: this.__target.js, root: this.__target.root, sources: this.__target.sources})
             .then(function(result) {
                 var symbols = result.symbols;
                 var filesHash = result.filesHash;

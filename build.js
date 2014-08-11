@@ -28,11 +28,13 @@ program
     .option('--copyto [copyto]', 'Copy result files to folder')
     .option('--missfile', 'Ignore no file errors')
     .option('--nodirchange', 'Sources directories havn\'t changed')
-    .option('--changed [changed]', 'Sources files which have benn changed. Specify --changed= if there is no changed files.',
+    .option('--changed [changed]',
+        'Sources files which have benn changed. Specify --changed= if there is no changed files.',
         commaSeparated)
     .option('--added [added]', 'Sources files which have benn added. Specify --added= if there is no added files.',
         commaSeparated)
-    .option('--removed [removed]', 'Sources files which have benn removed. Specify --removed= if there is no removed files.',
+    .option('--removed [removed]',
+        'Sources files which have benn removed. Specify --removed= if there is no removed files.',
         commaSeparated)
     .parse(process.argv);
 
@@ -125,7 +127,22 @@ catch (ex) {
  * @returns {*}
  */
 function resolveTarget(target, isPackage) {
-    if (target.ready || !target.extend) {
+    if (target.ready) {
+        return target;
+    }
+
+    if ('site' in target) {
+        target.site = path.resolve(program.path, target.site);
+    }
+    if ('js' in target) {
+        target.js = path.resolve(program.path, target.js);
+    }
+    if ('root' in target) {
+        target.root = path.resolve(program.path, target.root);
+    }
+
+    if (!target.extend) {
+        target.ready = true;
         return target;
     }
 
@@ -133,15 +150,13 @@ function resolveTarget(target, isPackage) {
     if ('root' in parentTarget && !('root' in target)) {
         target.root = parentTarget.root;
     }
-    else if (target.root) {
-        target.root = path.resolve(program.path, target.root);
-    }
 
     if ('site' in parentTarget && !('site' in target)) {
         target.site = parentTarget.site;
     }
-    else if ('site' in target) {
-        target.site = path.resolve(program.path, target.site);
+
+    if ('js' in parentTarget && !('js' in target)) {
+        target.js = parentTarget.js;
     }
 
     if (parentTarget.siteAbsolute && !('siteAbsolute' in target)) {
