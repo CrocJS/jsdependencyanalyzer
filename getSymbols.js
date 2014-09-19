@@ -214,7 +214,8 @@ Parser.prototype = {
     },
 
     __scanHTML: function(html, filePath) {
-        if (html.indexOf('<?php //+ignore') === 0) {
+        //todo html.indexOf('<?php //+ignore')
+        if (html.indexOf('<?php //+ignore') === 0 || html.indexOf('<?php /*+ignore*/') === 0) {
             return;
         }
 
