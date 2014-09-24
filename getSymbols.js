@@ -94,12 +94,10 @@ Parser.prototype = {
 
                 var promise = readFile(this.__file, 'utf8').then(
                     function(content) {
-                        if (path.extname(this.__file) !== '.js') {
-                            this.__scanHTML(content, this.__file);
-                        }
-                        else {
+                        if (path.extname(this.__file) === '.js') {
                             this.__scanJS(content);
                         }
+                        this.__scanHTML(content, this.__file);
                     }.bind(this),
 
                     function() {
