@@ -26,6 +26,7 @@ program
     .option('--time', 'Print executing time')
     .option('--nocache', 'Build without cache')
     .option('--copyto [copyto]', 'Copy result files to folder')
+    .option('--unused', 'Show unused js files')
     .option('--missfile', 'Ignore no file errors')
     .option('--nodirchange', 'Sources directories havn\'t changed')
     .option('--changed [changed]',
@@ -273,8 +274,8 @@ if (program.changed) {
                     throw new Error('No such package "' + program.only + '" in target "' + targetName + '"');
                 }
             }
-            targetsDeferreds.push(buildTarget(target, null,
-                program.add ? [program.add] : null).then(function(result) {
+            targetsDeferreds.push(buildTarget(target, null, program.add ? [program.add] : null)
+                .then(function(result) {
                     result.target = targetName;
                     if (result.files) {
                         result.files = result.files.map(finalizePath.bind(global, target));
@@ -292,7 +293,7 @@ if (program.changed) {
         return Q.all(targetsDeferreds);
     })
     .then(function(results) {
-        if (!program.time) {
+        if (!program.time && !program.unused) {
             console.log(JSON.stringify(results.length > 1 ? results : results[0], null, 4));
         }
 
@@ -322,6 +323,26 @@ if (program.changed) {
                     console.log(pair[1], pair[0]);
                 });
             });
+        }
+
+        if (program.unused) {
+            var found = [];
+            var used = [];
+            results.forEach(function(result) {
+                used = used.concat(result.files, _(result.packages).values().flatten().value());
+                var target = config[result.target];
+                found = found.concat(Object.keys(target.sources.$$symbolsMapCache.filesHash)
+                    .filter(function(file) {
+                        return path.extname(file) === '.js';
+                    })
+                    .map(function(file) {
+                        return finalizePath(target, file);
+                    }));
+            });
+            used = _.uniq(used);
+            found = _.uniq(found);
+            console.log('Unused js files:');
+            console.log(JSON.stringify(_.difference(found, used).sort(), null, 4));
         }
 
         if (program.compare) {
