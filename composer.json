@@ -8,7 +8,6 @@
         "role"  : "Developer"
     }],
     "require": {
-        "npm-asset/q": "*",
-        "npm-asset/lodash": "*"
+        "npm-asset/q": "*"
     }
 }
