@@ -12,6 +12,10 @@ module.exports = {
     __newCache: {},
     __files: {},
     clear: function() {
+        if (program.nocache) {
+            return;
+        }
+
         try {
             fs.unlinkSync(this.__getFileName());
         }
