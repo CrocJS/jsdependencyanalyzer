@@ -15,6 +15,7 @@ var commaSeparated = function(x) { return _.compact(x.split(',')); };
 
 program
     .option('-p, --path [path]', 'Path to jsdep.js', path.resolve)
+    .option('--cache [cache]', 'Path to cache directory', path.resolve, path.join(__dirname, 'cache'))
     .option('-t, --target [target]', 'Target(s) to build (separated by comma)', commaSeparated, ['current'])
     .option('-c, --compare [compare]', 'Compare with manual')
     .option('-a, --add [add]', 'Add file or symbol')

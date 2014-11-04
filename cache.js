@@ -5,6 +5,7 @@ var crypto = require('crypto');
 var Q = require('q');
 var _ = require('lodash');
 var program = require('commander');
+var mkdirp = require('mkdirp');
 
 module.exports = {
     __cache: {},
@@ -108,14 +109,13 @@ module.exports = {
             data.files = {};
         }
 
-        var fileName = this.__getFileName();
-        var dirName = path.dirname(fileName);
-        if (!fs.existsSync(dirName)) {
-            fs.mkdirSync(dirName);
-        }
-
         data.files[program.confPath] = fs.statSync(program.confPath).mtime.getTime();
-        return Q.denodeify(fs.writeFile)(fileName, JSON.stringify(data));
+
+        var fileName = this.__getFileName();
+        return Q.denodeify(mkdirp)(path.dirname(fileName))
+            .then(function() {
+                return Q.denodeify(fs.writeFile)(fileName, JSON.stringify(data));
+            });
     },
 
     /**
@@ -143,12 +143,12 @@ module.exports = {
      * @private
      */
     __getFileName: function() {
-        if (this.__fileName) {
-            return this.__fileName;
+        if (!this.__fileName) {
+            var hash = crypto.createHash('md5');
+            hash.update(_.flatten([program.confPath, program.target, program.only, program.add]).join(' '));
+            this.__fileName = path.join(program.cache, hash.digest('hex'));
         }
 
-        var hash = crypto.createHash('md5');
-        hash.update(_.flatten([program.confPath, program.target, program.only, program.add]).join(' '));
-        return (this.__fileName = path.join(__dirname, 'cache/' + hash.digest('hex')));
+        return this.__fileName;
     }
 };
