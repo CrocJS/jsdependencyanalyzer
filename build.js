@@ -14,7 +14,7 @@ var mkdirp = require('mkdirp');
 var commaSeparated = function(x) { return _.compact(x.split(',')); };
 
 program
-    .option('-p, --path [path]', 'Path to jsdep.js', path.resolve, __dirname)
+    .option('-p, --path [path]', 'Path to jsdep.js', path.resolve)
     .option('-t, --target [target]', 'Target(s) to build (separated by comma)', commaSeparated, ['current'])
     .option('-c, --compare [compare]', 'Compare with manual')
     .option('-a, --add [add]', 'Add file or symbol')
@@ -38,6 +38,11 @@ program
         'Sources files which have benn removed. Specify --removed= if there is no removed files.',
         commaSeparated)
     .parse(process.argv);
+
+var defaultConfPath = !program.path;
+if (defaultConfPath) {
+    program.path = path.join(__dirname, 'jsdep.js');
+}
 
 if (program.added && program.removed) {
     program.dirChangeInfo = true;
@@ -79,46 +84,14 @@ function processError(error) {
 
 process.on('uncaughtException', processError);
 
-//var config = {};
-//var lastPath;
-//var curPath = program.path;
-//var first = true;
-//do {
-//    var curConfigPath = path.join(curPath, 'jsdep.js');
-//    if (!fs.existsSync(curConfigPath)) {
-//        if (first) {
-//            throw new Error('No such file: ' + curConfigPath);
-//        }
-//    }
-//    else {
-//        var curConfig = require(curConfigPath);
-//        _.forOwn(curConfig, function(target, targetName) {
-//            //noinspection JSReferencingMutableVariableFromClosure
-//            if (first || targetName !== 'current') {
-//                if (target.root) {
-//                    //noinspection JSReferencingMutableVariableFromClosure
-//                    target.root = path.resolve(curPath, target.root);
-//                }
-//                if (target.site) {
-//                    //noinspection JSReferencingMutableVariableFromClosure
-//                    target.site = path.resolve(curPath, target.site);
-//                }
-//
-//                config[targetName] = target;
-//            }
-//        });
-//    }
-//
-//    lastPath = curPath;
-//    curPath = path.join(lastPath, '../');
-//    first = false;
-//} while (curPath !== lastPath);
-
 var config;
 try {
     config = require(confPath);
 }
 catch (ex) {
+    if (defaultConfPath) {
+        program.help();
+    }
     throw new Error('Corrupted config file: ' + confPath);
 }
 

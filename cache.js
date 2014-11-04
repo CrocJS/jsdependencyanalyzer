@@ -11,7 +11,14 @@ module.exports = {
     __newCache: {},
     __files: {},
     clear: function() {
-        fs.unlinkSync(this.__getFileName());
+        try {
+            fs.unlinkSync(this.__getFileName());
+        }
+        catch (ex) {
+            if (ex.code !== 'ENOENT') {
+                throw ex;
+            }
+        }
         this.__cacheCleared = true;
     },
     getData: function(section, file, defaults) {
@@ -121,8 +128,8 @@ module.exports = {
             return false;
         }
         var result = program.changed ?
-            program.changed.indexOf(file) !== -1 :
-            !this.__files[file] || this.__files[file] !== fs.statSync(file).mtime.getTime();
+        program.changed.indexOf(file) !== -1 :
+        !this.__files[file] || this.__files[file] !== fs.statSync(file).mtime.getTime();
 
         if (!result) {
             this.__files[file] = true;
