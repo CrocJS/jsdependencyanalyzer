@@ -37,11 +37,13 @@ SymbolsMap.prototype = {
                 if (source.path) {
                     var fullPath = library.normalizePath(this.__target, source.path, true);
                     var re = source.match && new RegExp(source.match);
+                    var type = source.type || 'js';
+                    var mask = source.mask || ('**/*.' + type);
 
                     return Q()
                         .then(function() {
                             return cache.getData(globCache, fullPath) ||
-                                glob(fullPath + '**/*.js').then(function(files) {
+                                glob(fullPath + mask).then(function(files) {
                                     return cache.setData(globCache, fullPath, files);
                                 });
                         })
@@ -53,7 +55,7 @@ SymbolsMap.prototype = {
                                     return;
                                 }
 
-                                ref = ref.substr(0, ref.length - 3);
+                                ref = ref.substr(0, ref.length - type.length - 1);
                                 var symbol = source.symbol ? source.symbol(ref) : this.__getSymbol(ref, source);
                                 if (symbol === ':default') {
                                     symbol = this.__getSymbol(ref, source);
@@ -70,7 +72,8 @@ SymbolsMap.prototype = {
                                         dependencies: typeof source.dependencies === 'function' ?
                                             source.dependencies(ref, symbolParam) : source.dependencies,
                                         ignore: typeof source.ignore === 'function' ?
-                                            source.ignore(ref, symbolParam) : source.ignore
+                                            source.ignore(ref, symbolParam) : source.ignore,
+                                        type: type
                                     };
                                 }
                             }, this);
@@ -90,7 +93,8 @@ SymbolsMap.prototype = {
                         files: files,
                         analyze: 'analyze' in source ? source.analyze : !!files.length,
                         dependencies: source.dependencies,
-                        ignore: source.ignore
+                        ignore: source.ignore,
+                        type: source.type || 'js'
                     };
                 }
             }.bind(this)))
@@ -98,16 +102,26 @@ SymbolsMap.prototype = {
             .then(function() {
                 var filesHash = {};
                 var symbolsHash = {};
+                var typesHash = {};
                 _.forOwn(this.__symbols, function(struct) {
                     struct.files.forEach(function(file) {
                         filesHash[file] = struct;
                     });
                     struct.symbols.forEach(function(symbol) {
                         symbolsHash[symbol] = struct;
+                        if (!typesHash[struct.type]) {
+                            typesHash[struct.type] = {};
+                        }
+                        typesHash[struct.type][symbol] = struct;
                     });
                 });
 
-                return Q({symbols: this.__symbols, filesHash: filesHash, symbolsHash: symbolsHash});
+                return Q({
+                    symbols: this.__symbols,
+                    filesHash: filesHash,
+                    symbolsHash: symbolsHash,
+                    typesHash: typesHash
+                });
             }.bind(this));
     },
 

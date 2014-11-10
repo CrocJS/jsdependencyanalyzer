@@ -23,7 +23,7 @@ var dependencyTypes = {
 };
 var scriptRegexp = /<script(?: type="text\/javascript")?>([\s\S]*?)<\/script>/g;
 var phpIncludeRegexp = /\b(?:include|require)(?:_once)?\s*(?:\(\s*)?(?:(?:__DIR__|dirname\(__FILE__\))\s*\.\s*)?['"]([\w\d\/_\-\.]+)['"]\s*(?:\)\s*)?(?:;|\?>)( ?\/\/jsdep:ignore)?/g;
-var commentRegexp = new RegExp('//\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+)', 'g');
+var commentRegexp = new RegExp('/[/*] ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/)?(?:\\n|$)', 'g');
 
 function getOperand(struct) {
     return struct === null ? 'null' :
@@ -35,14 +35,14 @@ function getOperand(struct) {
 
 /**
  * @param file
- * @param existedSymbols
+ * @param symbolsMap
  * @param packages
  * @param options
  * @constructor
  */
-var Parser = function(file, existedSymbols, packages, options) {
+var Parser = function(file, symbolsMap, packages, options) {
     this.__file = file;
-    this.__existedSymbols = existedSymbols;
+    this.__symbolsMap = symbolsMap;
     this.__packages = packages;
     this.__rawSymbols = [];
     this.__symbols = {};
@@ -60,7 +60,7 @@ Parser.prototype = {
     addDependency: function(symbol, dependencyType, checkWildcard) {
         if (checkWildcard && symbol[symbol.length - 1] === '*' && symbol[symbol.length - 2] === '.') {
             var prefix = symbol.substr(0, symbol.length - 1);
-            _.forOwn(this.__existedSymbols, function(value, name) {
+            _.forOwn(this.__symbolsMap.symbolsHash, function(value, name) {
                 if (name.substr(0, prefix.length) === prefix) {
                     this.addDependency(name, dependencyType);
                 }
@@ -94,10 +94,7 @@ Parser.prototype = {
 
                 var promise = readFile(this.__file, 'utf8').then(
                     function(content) {
-                        if (path.extname(this.__file) === '.js') {
-                            this.__scanJS(content);
-                        }
-                        this.__scanHTML(content, this.__file);
+                        this.__scanFile(content, this.__file);
                     }.bind(this),
 
                     function() {
@@ -111,24 +108,24 @@ Parser.prototype = {
                 }.bind(this));
             }.bind(this))
             .then(
-                function() {
-                    var fromCache = program.nodirchange && cache.getData(processedSymbolsCache, this.__file);
-                    if (fromCache) {
-                        this.__symbols = fromCache;
-                    }
-                    else {
-                        this.__processRawSymbols();
-                        _.forOwn(this.__symbols, function(depType, symbol) {
-                            if (depType === 'ignore') {
-                                delete this.__symbols[symbol];
-                            }
-                        }, this);
-                    }
+            function() {
+                var fromCache = program.nodirchange && cache.getData(processedSymbolsCache, this.__file);
+                if (fromCache) {
+                    this.__symbols = fromCache;
+                }
+                else {
+                    this.__processRawSymbols();
+                    _.forOwn(this.__symbols, function(depType, symbol) {
+                        if (depType === 'ignore') {
+                            delete this.__symbols[symbol];
+                        }
+                    }, this);
+                }
 
-                    cache.setData(processedSymbolsCache, this.__file, this.__symbols);
+                cache.setData(processedSymbolsCache, this.__file, this.__symbols);
 
-                    return this.__symbols;
-                }.bind(this));
+                return this.__symbols;
+            }.bind(this));
     },
 
     /**
@@ -191,6 +188,24 @@ Parser.prototype = {
         }
     },
 
+    __parseJS: function(content, suppressErrors) {
+        var parsedJS;
+        if (suppressErrors) {
+            try {
+                parsedJS = parsejs.parse(content, false, true);
+            }
+            catch (ex) {
+            }
+        }
+        else {
+            parsedJS = parsejs.parse(content, false, true);
+        }
+
+        if (parsedJS) {
+            this.__findSymbols(parsedJS, false);
+        }
+    },
+
     __processRawSymbols: function() {
         this.__rawSymbols.forEach(function(symbolDesc) {
             if (Array.isArray(symbolDesc.symbol)) {
@@ -198,7 +213,7 @@ Parser.prototype = {
                 if (this.__packages[symbol[0]]) {
                     while (symbol.length) {
                         var curSymbol = symbol.join('.');
-                        if (this.__existedSymbols[curSymbol]) {
+                        if (this.__symbolsMap[curSymbol]) {
                             this.addDependency(curSymbol, symbolDesc.depType);
                         }
                         symbol.pop();
@@ -211,98 +226,80 @@ Parser.prototype = {
         }, this);
     },
 
-    __scanHTML: function(html, filePath) {
-        //todo html.indexOf('<?php //+ignore')
-        if (html.indexOf('<?php //+ignore') === 0 || html.indexOf('<?php /*+ignore*/') === 0) {
+    __scanFile: function(content, filePath) {
+        var extName = path.extname(filePath);
+        var isHtml = extName !== '.js' && extName !== '.css';
+        var isJs = extName === '.js';
+
+        if (isHtml && (content.indexOf('<?php //+ignore') === 0 || content.indexOf('<?php /*+ignore*/') === 0)) {
             return;
         }
 
-        this.__parseComments(html);
+        this.__parseComments(content);
 
-        var symRe = this.__options.htmlSymbolRegexp;
-        if (symRe) {
-            if (!Array.isArray(symRe)) {
-                symRe = [symRe];
-            }
-            symRe.forEach(function(re) {
-                if (re instanceof RegExp) {
-                    re = {re: re, symbol: function(match) {
-                        return match[1];
-                    }}
-                }
-                var match;
-                while (match = re.re.exec(html)) {
-                    this.__rawSymbols.push({symbol: re.symbol(match), depType: 'use'});
-                }
-            }, this);
-        }
+        if (isHtml || isJs) {
+            this.__scanMatches(content, this.__options.htmlSymbolRegexp, this.__options.htmlSymbolsMap);
 
-        if (this.__options.htmlSymbolsMap) {
-            _.forOwn(this.__options.htmlSymbolsMap, function(symbol, pattern) {
-                if (html.indexOf(pattern) !== -1) {
-                    (Array.isArray(symbol) ? symbol : [symbol]).forEach(function(curSymbol) {
-                        this.__rawSymbols.push({symbol: curSymbol, depType: 'use'});
+            //scan css
+            var cssHash = this.__symbolsMap.typesHash.css;
+            if (cssHash) {
+                var cssRe = new RegExp('\\b(?:' + Object.keys(cssHash).join('|') + ')(?![\\d\\w\\-_])', 'g');
+                var cssMatch = content.match(cssRe);
+                if (cssMatch) {
+                    cssMatch.forEach(function(symbol) {
+                        this.__rawSymbols.push({symbol: symbol, depType: 'use'});
                     }, this);
                 }
-            }, this);
+            }
         }
 
-        var scriptMatch;
-        while (scriptMatch = scriptRegexp.exec(html)) {
-            this.__scanJS(scriptMatch[1], true);
+        if (isJs) {
+            this.__scanMatches(content, this.__options.jsSymbolRegexp, this.__options.jsSymbolsMap);
+            this.__parseJS(content);
         }
 
-        var includeMatch;
-        while (includeMatch = phpIncludeRegexp.exec(html)) {
-            if (!includeMatch[2]) {
-                //!! - absolute path
-                this.__rawSymbols.push({
-                    symbol: '!!' + path.join(path.dirname(filePath), includeMatch[1]),
-                    depType: 'use'
-                });
+        if (isHtml) {
+            var scriptMatch;
+            while (scriptMatch = scriptRegexp.exec(content)) {
+                this.__parseJS(scriptMatch[1], true);
+            }
+
+            var includeMatch;
+            while (includeMatch = phpIncludeRegexp.exec(content)) {
+                if (!includeMatch[2]) {
+                    //!! - absolute path
+                    this.__rawSymbols.push({
+                        symbol: '!!' + path.join(path.dirname(filePath), includeMatch[1]),
+                        depType: 'use'
+                    });
+                }
             }
         }
     },
 
-    __scanJS: function(js, suppressErrors) {
-        var parsedJS;
-        if (suppressErrors) {
-            try {
-                parsedJS = parsejs.parse(js, false, true);
+    __scanMatches: function(source, regexp, map) {
+        if (regexp) {
+            if (!Array.isArray(regexp)) {
+                regexp = [regexp];
             }
-            catch (ex) {
-            }
-        }
-        else {
-            parsedJS = parsejs.parse(js, false, true);
-        }
-
-        this.__parseComments(js);
-        if (parsedJS) {
-            this.__findSymbols(parsedJS, false);
-        }
-
-        var symRe = this.__options.jsSymbolRegexp;
-        if (symRe) {
-            if (!Array.isArray(symRe)) {
-                symRe = [symRe];
-            }
-            symRe.forEach(function(re) {
+            regexp.forEach(function(re) {
                 if (re instanceof RegExp) {
-                    re = {re: re, symbol: function(match) {
-                        return match[1];
-                    }}
+                    re = {
+                        re: re, symbol: function(match) {
+                            return match[1];
+                        }
+                    }
                 }
                 var match;
-                while (match = re.re.exec(js)) {
-                    this.__rawSymbols.push({symbol: re.symbol(match), depType: 'use'});
+                while (match = re.re.exec(source)) {
+                    this.__rawSymbols.push({symbol: re.symbol.call(this.__options, match), depType: 'use'});
                 }
             }, this);
         }
 
-        if (this.__options.jsSymbolsMap) {
-            _.forOwn(this.__options.jsSymbolsMap, function(symbol, pattern) {
-                if (js.indexOf(pattern) !== -1) {
+        if (map) {
+            _.forOwn(map, function(symbol, pattern) {
+                if (source.indexOf(pattern) !== -1) {
                     (Array.isArray(symbol) ? symbol : [symbol]).forEach(function(curSymbol) {
                         this.__rawSymbols.push({symbol: curSymbol, depType: 'use'});
                     }, this);
@@ -314,14 +311,14 @@ Parser.prototype = {
 
 /**
  * @param file
- * @param existedSymbols
+ * @param symbolsMap
  * @param packages
  * @param options
  * @returns {Q}
  */
-exports.parse = function parseSymbols(file, existedSymbols, packages, options) {
+exports.parse = function parseSymbols(file, symbolsMap, packages, options) {
     if (program.missfile && !fs.existsSync(file)) {
         return Q({});
     }
-    return new Parser(file, existedSymbols, packages, options).parse();
+    return new Parser(file, symbolsMap, packages, options).parse();
 };

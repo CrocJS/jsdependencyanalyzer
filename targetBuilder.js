@@ -24,15 +24,13 @@ var TargetBuilder = function(target, ignoreFiles) {
 
 TargetBuilder.prototype = {
     build: function() {
-        return symbolsMap.create({js: this.__target.js, root: this.__target.root, sources: this.__target.sources})
+        return symbolsMap.create(_.pick(this.__target, 'js', 'root', 'sources'))
             .then(function(result) {
-                var symbols = result.symbols;
-                var filesHash = result.filesHash;
-                var symbolsHash = result.symbolsHash;
+                this.__symbols = result.symbols;
+                this.__filesHash = result.filesHash;
+                this.__symbolsHash = result.symbolsHash;
+                this.__symbolsMap = result;
 
-                this.__symbols = symbols;
-                this.__filesHash = filesHash;
-                this.__symbolsHash = symbolsHash;
                 this.__findPackages();
 
                 this.__includedIds = {};
@@ -86,7 +84,7 @@ TargetBuilder.prototype = {
         var promise = Q();
         if (symbolStruct.analyze) {
             promise = Q.all(symbolStruct.files.map(function(file) {
-                return getSymbols.parse(file, this.__symbolsHash, this.__packages, this.__target.options)
+                return getSymbols.parse(file, this.__symbolsMap, this.__packages, this.__target.options)
                     .then(processDependencies);
             }, this));
         }
@@ -196,7 +194,9 @@ TargetBuilder.prototype = {
     __findPackages: function() {
         this.__packages = {};
         _.forOwn(this.__symbolsHash, function(symbolDesc, symbol) {
-            this.__packages[symbol.split('.')[0]] = true;
+            if (symbolDesc.type === 'js') {
+                this.__packages[symbol.split('.')[0]] = true;
+            }
         }, this);
     },
 
@@ -218,7 +218,7 @@ TargetBuilder.prototype = {
             return result.struct.files.filter(function(file) {
                 if (!this.__ignoreFiles[file]) {
                     this.__ignoreFiles[file] = true;
-                    return path.extname(file) === '.js';
+                    return _.contains(['.js', '.css'], path.extname(file));
                 }
                 return false;
             }, this);
@@ -240,7 +240,8 @@ TargetBuilder.prototype = {
                 id: id,
                 files: [symbolOrFile],
                 symbols: [symbol],
-                analyze: true
+                analyze: true,
+                type: 'other'
             };
         }
 
