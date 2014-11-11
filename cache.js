@@ -66,24 +66,30 @@ module.exports = {
 
                 var globCache = this.__cache[':glob'];
                 if (globCache && program.dirChangeInfo) {
-                    _.forOwn(globCache, function(files, wildcard) {
-                        program.added.forEach(function(addedFile) {
-                            if (addedFile.indexOf(wildcard) === 0) {
-                                if (files.indexOf(addedFile) === -1) {
-                                    files.push(addedFile);
+                    if ((program.added.concat(program.removed))
+                            .some(function(x) { return path.extname(x) === '.css'; })) {
+                        this.invalidate();
+                    }
+                    else {
+                        _.forOwn(globCache, function(files, wildcard) {
+                            program.added.forEach(function(addedFile) {
+                                if (addedFile.indexOf(wildcard) === 0) {
+                                    if (files.indexOf(addedFile) === -1) {
+                                        files.push(addedFile);
+                                    }
                                 }
-                            }
-                        });
+                            });
 
-                        program.removed.forEach(function(removedFile) {
-                            if (removedFile.indexOf(wildcard) === 0) {
-                                var i = files.indexOf(removedFile);
-                                if (i !== -1) {
-                                    files.splice(i, 1);
+                            program.removed.forEach(function(removedFile) {
+                                if (removedFile.indexOf(wildcard) === 0) {
+                                    var i = files.indexOf(removedFile);
+                                    if (i !== -1) {
+                                        files.splice(i, 1);
+                                    }
                                 }
-                            }
+                            });
                         });
-                    });
+                    }
                 }
                 else if (!program.nodirchange) {
                     this.__oldGlobCache = this.__cache[':glob'];
