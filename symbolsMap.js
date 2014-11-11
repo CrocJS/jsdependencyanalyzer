@@ -17,6 +17,7 @@ function defaultSymbol(ref, prefix) {
 
 var globCache = ':glob';
 var lastSymbolId = 0;
+var cacheInvalidated = false;
 
 /**
  * @param target
@@ -46,6 +47,12 @@ SymbolsMap.prototype = {
                     promise = Q().then(function() {
                         return cache.getData(globCache, fullPath) ||
                         glob(fullPath + mask).then(function(files) {
+                            //удаляем кеш если изменилась файловая структура
+                            var oldGlobCache = cache.getOldGlobCache() && cache.getOldGlobCache()[fullPath];
+                            if (!cacheInvalidated && oldGlobCache && _.xor(files, oldGlobCache).length > 0) {
+                                cache.invalidate();
+                                cacheInvalidated = true;
+                            }
                             return cache.setData(globCache, fullPath, files);
                         });
                     });

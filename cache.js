@@ -40,6 +40,9 @@ module.exports = {
         this.__files[file] = true;
         return newSectionData[file] = sectionData[file];
     },
+    getOldGlobCache: function() {
+        return this.__oldGlobCache;
+    },
     setData: function(section, file, data) {
         var sectionData = this.__cache[section] || (this.__cache[section] = {});
         var newSectionData = this.__newCache[section] || (this.__newCache[section] = {});
@@ -83,10 +86,15 @@ module.exports = {
                     });
                 }
                 else if (!program.nodirchange) {
+                    this.__oldGlobCache = this.__cache[':glob'];
                     delete this.__cache[':glob'];
                 }
             }
         }.bind(this));
+    },
+    invalidate: function() {
+        this.__cache = {};
+        this.__files = {};
     },
     save: function() {
         if (this.__cacheCleared) {
