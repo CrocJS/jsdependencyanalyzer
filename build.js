@@ -11,6 +11,8 @@ var http = require('http');
 var cache = require('./cache');
 var mkdirp = require('mkdirp');
 
+process.umask(parseInt('000', 8));
+
 var commaSeparated = function(x) { return _.compact(x.split(',')); };
 
 program
