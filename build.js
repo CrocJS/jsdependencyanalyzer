@@ -2,14 +2,15 @@
 
 var path = require('path');
 var fs = require('fs');
+
 var program = require('commander');
 var _ = require('lodash');
 var Q = require('q');
-var library = require('./library');
-var targetBuilder = require('./targetBuilder');
-var http = require('http');
-var cache = require('./cache');
 var mkdirp = require('mkdirp');
+
+var library = require('./library');
+var cache = require('./cache');
+var TargetBuilder = require('./TargetBuilder');
 
 process.umask(parseInt('000', 8));
 
@@ -37,7 +38,7 @@ program
     .option('--added [added]', 'Sources files which have benn added. Specify --added= if there is no added files.',
     commaSeparated)
     .option('--removed [removed]',
-    'Sources files which have benn removed. Specify --removed= if there is no removed files.',
+    'Sources files which have been removed. Specify --removed= if there is no removed files.',
     commaSeparated)
     .parse(process.argv);
 
@@ -92,132 +93,13 @@ catch (ex) {
     throw new Error('Corrupted config file: ' + confPath);
 }
 
-/**
- * @param target
- * @param [isPackage=false]
- * @returns {*}
- */
-function resolveTarget(target, isPackage) {
-    if (target.ready) {
-        return target;
-    }
-
-    if ('site' in target) {
-        target.site = path.resolve(program.path, target.site);
-    }
-    if ('js' in target) {
-        target.js = path.resolve(program.path, target.js);
-    }
-    if ('root' in target) {
-        target.root = path.resolve(program.path, target.root);
-    }
-
-    if (!target.extend) {
-        target.ready = true;
-        return target;
-    }
-
-    var parentTarget = typeof target.extend === 'string' ? resolveTarget(config[target.extend]) : target.extend;
-    if ('root' in parentTarget && !('root' in target)) {
-        target.root = parentTarget.root;
-    }
-
-    if ('site' in parentTarget && !('site' in target)) {
-        target.site = parentTarget.site;
-    }
-
-    if ('js' in parentTarget && !('js' in target)) {
-        target.js = parentTarget.js;
-    }
-
-    if (parentTarget.siteAbsolute && !('siteAbsolute' in target)) {
-        target.siteAbsolute = parentTarget.siteAbsolute;
-    }
-    if (parentTarget.sources) {
-        target.sources = target.sources ? parentTarget.sources.concat(target.sources) : parentTarget.sources;
-    }
-    if (parentTarget.include && !isPackage) {
-        target.include = target.include ? parentTarget.include.concat(target.include) : parentTarget.include.concat();
-    }
-
-    if (parentTarget.options) {
-        target.options = target.options ?
-            _.assign(_.clone(parentTarget.options), target.options) :
-            _.clone(parentTarget.options);
-    }
-    else if (!target.options) {
-        target.options = {};
-    }
-
-    if (target.packages) {
-        _.forOwn(target.packages, function(pack, packageName) {
-            pack.extend = target;
-            target.packages[packageName] = resolveTarget(pack, true);
-        });
-    }
-    if (parentTarget.packages && !isPackage) {
-        target.packages = _.assign(_.clone(parentTarget.packages), target.packages || {});
-    }
-
-    target.ready = true;
-    return target;
-}
-
-function buildTarget(target, ignoreFiles, addSymbols) {
-    target = resolveTarget(target);
-
-    var result = {};
-    var promise = Q();
-    if (target.include || addSymbols) {
-        if (target.include) {
-            target.include = _.flatten(target.include.map(function(dependency) {
-                return dependency.indexOf('target:') === 0 ?
-                resolveTarget(config[dependency.substr('target:'.length)]).include || [] : dependency;
-            }));
-        }
-
-        if (addSymbols) {
-            target.include = target.include ? target.include.concat(addSymbols) : addSymbols;
-        }
-
-        promise = targetBuilder.build(target, ignoreFiles).then(function(files) {
-            result.files = files;
-        });
-    }
-
-    if (target.packages) {
-        result.packages = {};
-        promise = promise.then(function() {
-            return Q.all(_.chain(target.packages).mapValues(function(pack, packageName) {
-                return buildTarget(pack, result.files).then(function(packageResult) {
-                    result.packages[packageName] = packageResult.files || [];
-                });
-            }).values().value());
-        });
-    }
-
-    return promise.thenResolve(result);
-}
-
-function finalizePath(target, file) {
-    if (target.site === '' || target.site) {
-        file = library.normalizePath(null, path.relative(path.resolve(program.path, target.site), file));
-        if (target.siteAbsolute) {
-            file = '/' + file;
-        }
-    }
-    return file;
-}
+var targetBuilder = new TargetBuilder(config);
 
 //resolve "run" targets
-program.target = _.flatten(
-    program.target.map(function(target) {
-        return config[target] && config[target].run ? config[target].run : target;
-    })
-);
+program.target = targetBuilder.flattenTargets(program.target);
 
 //process program.added/removed
-var sitePath = path.resolve(program.path, resolveTarget(config[program.target[0]]).site);
+var sitePath = path.resolve(program.path, targetBuilder.resolveTarget(config[program.target[0]]).site);
 var getAbsPath = function(relPath) {
     return library.normalizePath(null,
         path.resolve(sitePath, relPath.indexOf('/') === 0 ? relPath.substr(1) : relPath));
@@ -232,48 +114,9 @@ if (program.changed) {
 
 (program.nocache ? Q() : cache.restore())
     .then(function() {
-        var targetsDeferreds = [];
-        program.target.forEach(function(targetName) {
-            if (!config[targetName]) {
-                throw new Error('No such target: ' + targetName);
-            }
-            var target = resolveTarget(config[targetName]);
-            if (program.only) {
-                target.packages = _.pick(target.packages, program.only);
-                if (_.isEmpty(target.packages)) {
-                    throw new Error('No such package "' + program.only + '" in target "' + targetName + '"');
-                }
-            }
-            targetsDeferreds.push(buildTarget(target, null, program.add ? [program.add] : null)
-                .then(function(result) {
-                    result.target = targetName;
-                    if (result.files) {
-                        result.files = result.files.map(finalizePath.bind(global, target));
-                    }
-                    if (result.packages) {
-                        result.packages = _.mapValues(result.packages, function(files) {
-                            return files.map(finalizePath.bind(global, target))
-                        });
-                    }
-                    if (program.separate) {
-                        var separateFiles = function(files) {
-                            return _.groupBy(files, function(file) {
-                                return path.extname(file).slice(1);
-                            });
-                        };
-                        if (result.files) {
-                            result.files = separateFiles(result.files);
-                        }
-                        if (result.packages) {
-                            result.packages = _.mapValues(result.packages, separateFiles);
-                        }
-                    }
-
-                    return result;
-                }));
-        });
-
-        return Q.all(targetsDeferreds);
+        return Q.all(program.target.map(function(name) {
+            return targetBuilder.build(name);
+        }));
     })
     .then(function(results) {
         if (!program.time && !program.unused) {
@@ -319,7 +162,7 @@ if (program.changed) {
                         return path.extname(file) === '.js';
                     })
                     .map(function(file) {
-                        return finalizePath(target, file);
+                        return library.finalizePath(target, file);
                     }));
             });
             used = _.uniq(used);

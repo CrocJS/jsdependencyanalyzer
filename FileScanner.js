@@ -23,46 +23,101 @@ var dependencyTypes = {
 };
 var scriptRegexp = /<script(?: type="text\/javascript")?>([\s\S]*?)<\/script>/g;
 var phpIncludeRegexp = /\b(?:include|require)(?:_once)?\s*(?:\(\s*)?(?:(?:__DIR__|dirname\(__FILE__\))\s*\.\s*)?['"]([\w\d\/_\-\.]+)['"]\s*(?:\)\s*)?(?:;|\?>)( ?\/\/jsdep:ignore)?/g;
-var commentRegexp = new RegExp('/[/*] ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/)?(?:\\n|$)', 'g');
-
-function getOperand(struct) {
-    return struct === null ? 'null' :
-        typeof struct === 'string' ? 'string' :
-            !Array.isArray(struct) ? 'token' :
-                !struct.length || Array.isArray(struct[0]) || !struct[0] ? 'nope' :
-                    typeof struct[0] === 'string' ? struct[0] : struct[0].name;
-}
+var commentRegexp =
+    new RegExp('/[/*] ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/)?(?:\\n|$)', 'g');
 
 /**
- * @param file
- * @param symbolsMap
- * @param packages
- * @param options
+ * Сканирует файл на наличие в нём символов
+ * @param {string} file
+ * @param {Object} symbolsMap
+ * @param {Object} packages
+ * @param {Object} options
  * @constructor
  */
-var Parser = function(file, symbolsMap, packages, options) {
+var FileScanner = function(file, symbolsMap, packages, options) {
     this.__file = file;
     this.__symbolsMap = symbolsMap;
     this.__packages = packages;
     this.__rawSymbols = [];
     this.__symbols = {};
     this.__options = options;
+
+    if (program.missfile && !fs.existsSync(file)) {
+        this.__result = Q({});
+        return;
+    }
+
+    this.__result = Q()
+        .then(function() {
+            var fromCache = cache.getData(symbolsCache, this.__file);
+            if (fromCache) {
+                this.__rawSymbols = fromCache;
+                return;
+            }
+            else if (rawSymbolsDef[this.__file]) {
+                return rawSymbolsDef[this.__file].then(function(symbols) {
+                    this.__rawSymbols = symbols;
+                }.bind(this));
+            }
+
+            var promise = readFile(this.__file, 'utf8').then(
+                function(content) {
+                    this.__scanFile(content, this.__file);
+                }.bind(this),
+
+                function() {
+                    throw new Error('Read file error: ' + this.__file);
+                }.bind(this));
+
+            return rawSymbolsDef[this.__file] = promise.then(function() {
+                delete rawSymbolsDef[this.__file];
+                cache.setData(symbolsCache, this.__file, this.__rawSymbols);
+                return this.__rawSymbols;
+            }.bind(this));
+        }.bind(this))
+
+        .then(function() {
+            var fromCache = program.nodirchange && cache.getData(processedSymbolsCache, this.__file);
+            if (fromCache) {
+                this.__symbols = fromCache;
+            }
+            else {
+                this.__processRawSymbols();
+                _.forOwn(this.__symbols, function(depType, symbol) {
+                    if (depType === 'ignore') {
+                        delete this.__symbols[symbol];
+                    }
+                }, this);
+            }
+
+            cache.setData(processedSymbolsCache, this.__file, this.__symbols);
+
+            return this.__symbols;
+        }.bind(this));
 };
 
-Parser.prototype = {
-    constructor: Parser,
+FileScanner.prototype = {
+    constructor: FileScanner,
+
+    /**
+     * Результат работы компонента
+     * @returns {Q}
+     */
+    getResult: function() {
+        return this.__result;
+    },
 
     /**
      * @param {string} symbol
      * @param [dependencyType]
      * @param [checkWildcard = false]
      */
-    addDependency: function(symbol, dependencyType, checkWildcard) {
+    __addDependency: function(symbol, dependencyType, checkWildcard) {
         if (checkWildcard && symbol[symbol.length - 1] === '*' && symbol[symbol.length - 2] === '.') {
             var prefix = symbol.substr(0, symbol.length - 1);
             _.forOwn(this.__symbolsMap.symbolsHash, function(value, name) {
                 if (name.substr(0, prefix.length) === prefix) {
-                    this.addDependency(name, dependencyType);
+                    this.__addDependency(name, dependencyType);
                 }
             }, this);
         }
@@ -75,66 +130,12 @@ Parser.prototype = {
     },
 
     /**
-     * @returns {Q}
-     */
-    parse: function() {
-
-        return Q()
-            .then(function() {
-                var fromCache = cache.getData(symbolsCache, this.__file);
-                if (fromCache) {
-                    this.__rawSymbols = fromCache;
-                    return;
-                }
-                else if (rawSymbolsDef[this.__file]) {
-                    return rawSymbolsDef[this.__file].then(function(symbols) {
-                        this.__rawSymbols = symbols;
-                    }.bind(this));
-                }
-
-                var promise = readFile(this.__file, 'utf8').then(
-                    function(content) {
-                        this.__scanFile(content, this.__file);
-                    }.bind(this),
-
-                    function() {
-                        throw new Error('Read file error: ' + this.__file);
-                    }.bind(this));
-
-                return rawSymbolsDef[this.__file] = promise.then(function() {
-                    delete rawSymbolsDef[this.__file];
-                    cache.setData(symbolsCache, this.__file, this.__rawSymbols);
-                    return this.__rawSymbols;
-                }.bind(this));
-            }.bind(this))
-            .then(
-            function() {
-                var fromCache = program.nodirchange && cache.getData(processedSymbolsCache, this.__file);
-                if (fromCache) {
-                    this.__symbols = fromCache;
-                }
-                else {
-                    this.__processRawSymbols();
-                    _.forOwn(this.__symbols, function(depType, symbol) {
-                        if (depType === 'ignore') {
-                            delete this.__symbols[symbol];
-                        }
-                    }, this);
-                }
-
-                cache.setData(processedSymbolsCache, this.__file, this.__symbols);
-
-                return this.__symbols;
-            }.bind(this));
-    },
-
-    /**
      * @param struct
      * @returns {*}
      * @private
      */
     __composeSymbol: function(struct) {
-        var operand = getOperand(struct);
+        var operand = this.__getOperand(struct);
 
         if (operand === 'name') {
             return [struct[1]];
@@ -162,12 +163,25 @@ Parser.prototype = {
         }
         else {
             if (!useSymbol) {
-                useSymbol = !this.__requireAll && getOperand(struct) === 'function';
+                useSymbol = !this.__requireAll && this.__getOperand(struct) === 'function';
             }
             struct.forEach(function(subStruct) {
                 this.__findSymbols(subStruct, useSymbol);
             }, this);
         }
+    },
+
+    /**
+     * @param struct
+     * @returns {string}
+     * @private
+     */
+    __getOperand: function(struct) {
+        return struct === null ? 'null' :
+            typeof struct === 'string' ? 'string' :
+                !Array.isArray(struct) ? 'token' :
+                    !struct.length || Array.isArray(struct[0]) || !struct[0] ? 'nope' :
+                        typeof struct[0] === 'string' ? struct[0] : struct[0].name;
     },
 
     /**
@@ -188,6 +202,11 @@ Parser.prototype = {
         }
     },
 
+    /**
+     * @param {string} content
+     * @param {boolean} [suppressErrors=false]
+     * @private
+     */
     __parseJS: function(content, suppressErrors) {
         var parsedJS;
         if (suppressErrors) {
@@ -206,6 +225,9 @@ Parser.prototype = {
         }
     },
 
+    /**
+     * @private
+     */
     __processRawSymbols: function() {
         this.__rawSymbols.forEach(function(symbolDesc) {
             if (Array.isArray(symbolDesc.symbol)) {
@@ -214,18 +236,23 @@ Parser.prototype = {
                     while (symbol.length) {
                         var curSymbol = symbol.join('.');
                         if (this.__symbolsMap.symbolsHash[curSymbol]) {
-                            this.addDependency(curSymbol, symbolDesc.depType);
+                            this.__addDependency(curSymbol, symbolDesc.depType);
                         }
                         symbol.pop();
                     }
                 }
             }
             else {
-                this.addDependency(symbolDesc.symbol, symbolDesc.depType, symbolDesc.wildcard);
+                this.__addDependency(symbolDesc.symbol, symbolDesc.depType, symbolDesc.wildcard);
             }
         }, this);
     },
 
+    /**
+     * @param {string} content
+     * @param {string} filePath
+     * @private
+     */
     __scanFile: function(content, filePath) {
         var extName = path.extname(filePath);
         var isHtml = extName !== '.js' && extName !== '.css';
@@ -277,6 +304,12 @@ Parser.prototype = {
         }
     },
 
+    /**
+     * @param {string} source
+     * @param {RegExp} regexp
+     * @param {Object} map
+     * @private
+     */
     __scanMatches: function(source, regexp, map) {
         if (regexp) {
             if (!Array.isArray(regexp)) {
@@ -309,16 +342,4 @@ Parser.prototype = {
     }
 };
 
-/**
- * @param file
- * @param symbolsMap
- * @param packages
- * @param options
- * @returns {Q}
- */
-exports.parse = function parseSymbols(file, symbolsMap, packages, options) {
-    if (program.missfile && !fs.existsSync(file)) {
-        return Q({});
-    }
-    return new Parser(file, symbolsMap, packages, options).parse();
-};
+module.exports = FileScanner;

@@ -7,6 +7,21 @@ var program = require('commander');
 module.exports = {
     /**
      * @param target
+     * @param file
+     * @returns {string}
+     */
+    finalizePath: function(target, file) {
+        if (target.site === '' || target.site) {
+            file = this.normalizePath(null, path.relative(path.resolve(program.path, target.site), file));
+            if (target.siteAbsolute) {
+                file = '/' + file;
+            }
+        }
+        return file;
+    },
+
+    /**
+     * @param target
      * @param path_
      * @param [addSlash=false]
      * @returns {string}
@@ -20,7 +35,8 @@ module.exports = {
             path_ = path_.substr(1);
         }
 
-        var normalized = ((root === '' || root) ? path.resolve(root, path_) : path.normalize(path_)).replace(/[\\\/]+/g, '/');
+        var normalized = ((root === '' || root) ? path.resolve(root, path_) : path.normalize(path_)).replace(/[\\\/]+/g,
+            '/');
         if (addSlash && normalized[normalized.length - 1] !== '/') {
             normalized += '/';
         }

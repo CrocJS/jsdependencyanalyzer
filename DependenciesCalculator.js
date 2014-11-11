@@ -7,12 +7,18 @@ var _ = require('lodash');
 var program = require('commander');
 
 var library = require('./library');
-var getSymbols = require('./getSymbols');
-var symbolsMap = require('./symbolsMap');
+var FileScanner = require('./FileScanner');
+var SymbolsGrabber = require('./SymbolsGrabber');
 
 var lastSymbolId = 0;
 
-var TargetBuilder = function(target, ignoreFiles) {
+/**
+ * Расчитывает зависимости для переданной цели
+ * @param {Object} target
+ * @param {Array.<string>} ignoreFiles
+ * @constructor
+ */
+var DependenciesCalculator = function(target, ignoreFiles) {
     this.__target = target;
     this.__ignoreFiles = {};
     if (ignoreFiles) {
@@ -20,43 +26,56 @@ var TargetBuilder = function(target, ignoreFiles) {
             this.__ignoreFiles[file] = true;
         }, this);
     }
+
+    this.__result = new SymbolsGrabber(this.__target).getResult()
+        .then(function(result) {
+            this.__symbols = result.symbols;
+            this.__filesHash = result.filesHash;
+            this.__symbolsHash = result.symbolsHash;
+            this.__symbolsMap = result;
+
+            this.__findPackages();
+
+            this.__includedIds = {};
+            this.__filesList = [];
+
+            var promise = Q();
+            this.__target.include.forEach(function(item) {
+                promise = promise.then(function() {
+                    return this.__addTargetChunk(this.__getSymbolStruct(item));
+                }.bind(this));
+            }, this);
+
+            return promise;
+        }.bind(this))
+
+        .then(function() {
+            var files = this.__filesList;
+            var hash = this.__filesHash;
+            return files.concat().sort(function(a, b) {
+                var aWeight = hash[a].weight;
+                var bWeight = hash[b].weight;
+                return aWeight === bWeight ? files.indexOf(a) - files.indexOf(b) : aWeight - bWeight;
+            }.bind(this));
+        }.bind(this));
 };
 
-TargetBuilder.prototype = {
-    build: function() {
-        return symbolsMap.create(_.pick(this.__target, 'js', 'root', 'sources'))
-            .then(function(result) {
-                this.__symbols = result.symbols;
-                this.__filesHash = result.filesHash;
-                this.__symbolsHash = result.symbolsHash;
-                this.__symbolsMap = result;
+DependenciesCalculator.prototype = {
+    constructor: DependenciesCalculator,
 
-                this.__findPackages();
-
-                this.__includedIds = {};
-                this.__filesList = [];
-
-                var promise = Q();
-                this.__target.include.forEach(function(item) {
-                    promise = promise.then(function() {
-                        return this.__addTargetChunk(this.__getSymbolStruct(item));
-                    }.bind(this));
-                }, this);
-
-                return promise;
-            }.bind(this))
-
-            .then(function() {
-                var files = this.__filesList;
-                var hash = this.__filesHash;
-                return files.concat().sort(function(a, b) {
-                    var aWeight = hash[a].weight;
-                    var bWeight = hash[b].weight;
-                    return aWeight === bWeight ? files.indexOf(a) - files.indexOf(b) : aWeight - bWeight;
-                }.bind(this));
-            }.bind(this));
+    /**
+     * Результат работы компонента
+     * @returns {Q.promise}
+     */
+    getResult: function() {
+        return this.__result;
     },
 
+    /**
+     * @param symbolStruct
+     * @returns {Q.promise}
+     * @private
+     */
     __addTargetChunk: function(symbolStruct) {
         this.__dependencyDeferred = Q.defer();
         this.__resultsHash = {};
@@ -65,6 +84,10 @@ TargetBuilder.prototype = {
         return this.__dependencyDeferred.promise;
     },
 
+    /**
+     * @param symbolStruct
+     * @private
+     */
     __addSymbolStruct: function(symbolStruct) {
         ++this.__depencencyCounter;
         if (this.__includedIds[symbolStruct.id]) {
@@ -90,7 +113,7 @@ TargetBuilder.prototype = {
         var promise = Q();
         if (symbolStruct.analyze) {
             promise = Q.all(symbolStruct.files.map(function(file) {
-                return getSymbols.parse(file, this.__symbolsMap, this.__packages, this.__target.options)
+                return new FileScanner(file, this.__symbolsMap, this.__packages, this.__target.options).getResult()
                     .then(processDependencies);
             }, this));
         }
@@ -109,6 +132,11 @@ TargetBuilder.prototype = {
             }.bind(this));
     },
 
+    /**
+     * @param symbolStruct
+     * @param dependencies
+     * @private
+     */
     __addSymbolStructToResults: function(symbolStruct, dependencies) {
         if (program.dependencies) {
             console.log(symbolStruct.files,
@@ -185,6 +213,9 @@ TargetBuilder.prototype = {
         };
     },
 
+    /**
+     * @private
+     */
     __decDependencyCounter: function() {
         --this.__depencencyCounter;
         if (this.__depencencyCounter === 0) {
@@ -206,6 +237,9 @@ TargetBuilder.prototype = {
         }, this);
     },
 
+    /**
+     * @private
+     */
     __finishTargetChunk: function() {
         var results = _.values(this.__resultsHash).sort(function(a, b) {
             var aReqWeight = a.requireWeight();
@@ -233,6 +267,11 @@ TargetBuilder.prototype = {
         this.__filesList = this.__filesList.concat(resultFiles);
     },
 
+    /**
+     * @param {string} symbolOrFile
+     * @returns {Object}
+     * @private
+     */
     __getSymbolStruct: function(symbolOrFile) {
         var symbolStruct = this.__symbolsHash[symbolOrFile];
         if (!symbolStruct) {
@@ -256,6 +295,4 @@ TargetBuilder.prototype = {
     }
 };
 
-exports.build = function(target, ignoreFiles) {
-    return new TargetBuilder(target, ignoreFiles).build();
-};
+module.exports = DependenciesCalculator;

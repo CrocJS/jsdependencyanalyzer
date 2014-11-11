@@ -11,6 +11,7 @@ module.exports = {
     __cache: {},
     __newCache: {},
     __files: {},
+
     clear: function() {
         if (program.nocache) {
             return;
