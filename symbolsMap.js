@@ -34,69 +34,65 @@ SymbolsMap.prototype = {
         return Q
 
             .all(this.__target.sources.map(function(source) {
+                var promise;
+                var fullPath;
+                var type = source.type || 'js';
+                var mask = source.mask || ('**/*.' + type);
+                var isGlob = !!source.path;
+
                 if (source.path) {
-                    var fullPath = library.normalizePath(this.__target, source.path, true);
-                    var re = source.match && new RegExp(source.match);
-                    var type = source.type || 'js';
-                    var mask = source.mask || ('**/*.' + type);
+                    fullPath = library.normalizePath(this.__target, source.path, true);
 
-                    return Q()
-                        .then(function() {
-                            return cache.getData(globCache, fullPath) ||
-                                glob(fullPath + mask).then(function(files) {
-                                    return cache.setData(globCache, fullPath, files);
-                                });
-                        })
-                        .then(function(files) {
-                            files.forEach(function(file) {
-                                var ref = file.substr(fullPath.length);
-
-                                if (re && !re.test(ref)) {
-                                    return;
-                                }
-
-                                ref = ref.substr(0, ref.length - type.length - 1);
-                                var symbol = source.symbol ? source.symbol(ref) : this.__getSymbol(ref, source);
-                                if (symbol === ':default') {
-                                    symbol = this.__getSymbol(ref, source);
-                                }
-
-                                if (symbol) {
-                                    var id = ++lastSymbolId;
-                                    var symbolParam = Array.isArray(symbol) ? symbol[0] : symbol;
-                                    this.__symbols[id] = {
-                                        id: id,
-                                        symbols: Array.isArray(symbol) ? symbol : [symbol],
-                                        files: [file],
-                                        analyze: 'analyze' in source ? source.analyze : true,
-                                        dependencies: typeof source.dependencies === 'function' ?
-                                            source.dependencies(ref, symbolParam) : source.dependencies,
-                                        ignore: typeof source.ignore === 'function' ?
-                                            source.ignore(ref, symbolParam) : source.ignore,
-                                        type: type
-                                    };
-                                }
-                            }, this);
-                        }.bind(this));
+                    promise = Q().then(function() {
+                        return cache.getData(globCache, fullPath) ||
+                        glob(fullPath + mask).then(function(files) {
+                            return cache.setData(globCache, fullPath, files);
+                        });
+                    });
                 }
                 else {
                     var files = [];
                     if (source.file) {
                         files = (Array.isArray(source.file) ? source.file : [source.file])
-                            .map(library.normalizePath.bind(library, this.__target));
+                            .map(function(x) { return library.normalizePath(this.__target, x); }, this);
                     }
-
-                    var id = ++lastSymbolId;
-                    this.__symbols[id] = {
-                        id: id,
-                        symbols: (Array.isArray(source.symbol) ? source.symbol : [source.symbol]),
-                        files: files,
-                        analyze: 'analyze' in source ? source.analyze : !!files.length,
-                        dependencies: source.dependencies,
-                        ignore: source.ignore,
-                        type: source.type || 'js'
-                    };
+                    promise = Q([files]);
                 }
+
+                return promise.then(function(files) {
+                    files.forEach(function(file) {
+                        var ref = isGlob && file.substr(fullPath.length);
+                        if (ref && source.match && !(new RegExp(source.match).test(ref))) {
+                            return;
+                        }
+
+                        ref = ref && ref.substr(0, ref.length - type.length - 1);
+                        var symbol = !isGlob ? source.symbol :
+                            source.symbol ? source.symbol(ref) : this.__getSymbol(ref, source);
+                        if (isGlob && symbol === ':default') {
+                            symbol = this.__getSymbol(ref, source);
+                        }
+
+                        if (symbol) {
+                            var id = ++lastSymbolId;
+                            var symbolParam = Array.isArray(symbol) ? symbol[0] : symbol;
+                            var files = Array.isArray(file) ? file : [file];
+                            this.__symbols[id] = {
+                                id: id,
+                                symbols: Array.isArray(symbol) ? symbol : [symbol],
+                                files: files,
+                                analyze: 'analyze' in source ? source.analyze : !!files.length,
+                                dependencies: isGlob && typeof source.dependencies === 'function' ?
+                                    source.dependencies(ref, symbolParam) : source.dependencies,
+                                ignore: isGlob && typeof source.ignore === 'function' ?
+                                    source.ignore(ref, symbolParam) : source.ignore,
+                                weight: (isGlob && typeof source.weight === 'function' ?
+                                    source.weight(ref, symbolParam) : source.weight) || 0,
+                                type: type
+                            };
+                        }
+                    }, this);
+                }.bind(this));
             }.bind(this)))
 
             .then(function() {

@@ -17,13 +17,12 @@ program
     .option('-p, --path [path]', 'Path to jsdep.js', path.resolve)
     .option('--cache [cache]', 'Path to cache directory', path.resolve, path.join(__dirname, 'cache'))
     .option('-t, --target [target]', 'Target(s) to build (separated by comma)', commaSeparated, ['current'])
-    .option('-c, --compare [compare]', 'Compare with manual')
     .option('-a, --add [add]', 'Add file or symbol')
     .option('-o, --only [only]', 'Build only one package in target')
     .option('-s, --statistics [statistics]', 'Statistics of file usage in packages')
     .option('-d, --dependencies [dependencies]', 'Print dependencies between files')
     .option('-e, --debug [debug]', 'Debug mode (print stack for errors)')
-    .option('-j, --jsincludes [jsincludes]', 'Print generated js_includes for packages')
+    .option('--separate', 'Group files by type')
     .option('--time', 'Print executing time')
     .option('--nocache', 'Build without cache')
     .option('--copyto [copyto]', 'Copy result files to folder')
@@ -31,13 +30,13 @@ program
     .option('--missfile', 'Ignore no file errors')
     .option('--nodirchange', 'Sources directories havn\'t changed')
     .option('--changed [changed]',
-        'Sources files which have benn changed. Specify --changed= if there is no changed files.',
-        commaSeparated)
+    'Sources files which have benn changed. Specify --changed= if there is no changed files.',
+    commaSeparated)
     .option('--added [added]', 'Sources files which have benn added. Specify --added= if there is no added files.',
-        commaSeparated)
+    commaSeparated)
     .option('--removed [removed]',
-        'Sources files which have benn removed. Specify --removed= if there is no removed files.',
-        commaSeparated)
+    'Sources files which have benn removed. Specify --removed= if there is no removed files.',
+    commaSeparated)
     .parse(process.argv);
 
 var defaultConfPath = !program.path;
@@ -55,11 +54,6 @@ if (!program.nodirchange && program.dirChangeInfo && !program.added.length && !p
 var timeStart;
 if (program.time) {
     timeStart = program.timeStart = new Date().getTime();
-}
-
-var jsIncludesUrl = 'http://active.www.dev.sotmarket.ru/prototypes/resources/js_includes_output.php';
-if (program.compare && typeof program.compare !== 'string') {
-    program.compare = jsIncludesUrl;
 }
 
 var confPath = program.confPath = program.path;
@@ -176,7 +170,7 @@ function buildTarget(target, ignoreFiles, addSymbols) {
         if (target.include) {
             target.include = _.flatten(target.include.map(function(dependency) {
                 return dependency.indexOf('target:') === 0 ?
-                    resolveTarget(config[dependency.substr('target:'.length)]).include || [] : dependency;
+                resolveTarget(config[dependency.substr('target:'.length)]).include || [] : dependency;
             }));
         }
 
@@ -259,6 +253,19 @@ if (program.changed) {
                             return files.map(finalizePath.bind(global, target))
                         });
                     }
+                    if (program.separate) {
+                        var separateFiles = function(files) {
+                            return _.groupBy(files, function(file) {
+                                return path.extname(file).slice(1);
+                            });
+                        };
+                        if (result.files) {
+                            result.files = separateFiles(result.files);
+                        }
+                        if (result.packages) {
+                            result.packages = _.mapValues(result.packages, separateFiles);
+                        }
+                    }
 
                     return result;
                 }));
@@ -317,88 +324,6 @@ if (program.changed) {
             found = _.uniq(found);
             console.log('Unused js files:');
             console.log(JSON.stringify(_.difference(found, used).sort(), null, 4));
-        }
-
-        if (program.compare) {
-            http.get(program.compare, function(response) {
-                var data = '';
-                response.on('data', function(chunk) {
-                    data += chunk;
-                });
-                response.on('end', function() {
-                    var jsIncludes = JSON.parse(data);
-
-                    results.forEach(function(result) {
-                        console.log('\n');
-
-                        if (results.length > 1) {
-                            console.log('target: ' + result.target + '\n');
-                        }
-
-                        var original = jsIncludes[result.target];
-                        console.log('Сравнение: core.php');
-                        var manual = _.uniq(original.files);
-                        console.log('Лишние файлы в js_includes');
-                        console.log(_.difference(manual, result.files, null, 4));
-                        console.log('Лишние файлы у сборщика');
-                        console.log(_.difference(result.files, manual, null, 4));
-
-                        if (result.packages) {
-                            Object.keys(result.packages).sort().forEach(function(pack) {
-                                var files = result.packages[pack];
-
-                                console.log('\nСравнение: ' + pack);
-                                var manual = _.uniq(original.packages[pack]);
-                                console.log('Лишние файлы в js_includes');
-                                console.log(_.difference(manual, files.concat(result.files), null, 4));
-                                console.log('Лишние файлы у сборщика');
-                                console.log(_.difference(files, manual.concat(original.files), null, 4));
-                            });
-                        }
-                    });
-                });
-            });
-        }
-
-        if (program.jsincludes) {
-            http.get(jsIncludesUrl, function(response) {
-                var data = '';
-                response.on('data', function(chunk) {
-                    data += chunk;
-                });
-                response.on('end', function() {
-                    var jsIncludes = JSON.parse(data);
-
-                    results.forEach(function(result) {
-                        console.log('\n');
-
-                        if (results.length > 1) {
-                            console.log('target: ' + result.target + '\n');
-                        }
-
-                        var original = jsIncludes[result.target];
-
-                        if (program.jsincludes === 'core') {
-                            result.files.forEach(function(file) {
-                                console.log("array(\n    'type' => 'file',\n    'src'  => '" + file.substr(6) + "'\n),");
-                            });
-                        }
-                        else if (result.packages) {
-                            Object.keys(result.packages).sort().forEach(function(pack) {
-                                var files = result.packages[pack];
-
-                                var generatedPackage = _.uniq(_.difference(
-                                    result.files.concat(files),
-                                    original.files.concat('/d/js/resources/jquery/autogrowinput/jquery.autogrowinput.min.js')
-                                ));
-                                generatedPackage.forEach(function(packFile) {
-                                    console.log("array(\n    'type' => 'file',\n    'src'  => '" + packFile.substr(6) + "'\n),");
-                                });
-                            });
-                        }
-                    });
-                });
-            });
         }
 
         //copyto

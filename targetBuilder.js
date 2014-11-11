@@ -47,7 +47,13 @@ TargetBuilder.prototype = {
             }.bind(this))
 
             .then(function() {
-                return this.__filesList;
+                var files = this.__filesList;
+                var hash = this.__filesHash;
+                return files.concat().sort(function(a, b) {
+                    var aWeight = hash[a].weight;
+                    var bWeight = hash[b].weight;
+                    return aWeight === bWeight ? files.indexOf(a) - files.indexOf(b) : aWeight - bWeight;
+                }.bind(this));
             }.bind(this));
     },
 
@@ -241,7 +247,8 @@ TargetBuilder.prototype = {
                 files: [symbolOrFile],
                 symbols: [symbol],
                 analyze: true,
-                type: 'other'
+                type: 'other',
+                weight: 0
             };
         }
 
