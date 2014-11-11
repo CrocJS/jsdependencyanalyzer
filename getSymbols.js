@@ -213,7 +213,7 @@ Parser.prototype = {
                 if (this.__packages[symbol[0]]) {
                     while (symbol.length) {
                         var curSymbol = symbol.join('.');
-                        if (this.__symbolsMap[curSymbol]) {
+                        if (this.__symbolsMap.symbolsHash[curSymbol]) {
                             this.addDependency(curSymbol, symbolDesc.depType);
                         }
                         symbol.pop();

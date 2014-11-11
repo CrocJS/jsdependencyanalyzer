@@ -116,7 +116,7 @@ module.exports = {
         data.files[program.confPath] = fs.statSync(program.confPath).mtime.getTime();
 
         var fileName = this.__getFileName();
-        return Q.denodeify(mkdirp)(path.dirname(fileName))
+        return Q.denodeify(mkdirp)(path.dirname(fileName), {mode: 0777})
             .then(function() {
                 return Q.denodeify(fs.writeFile)(fileName, JSON.stringify(data));
             });
