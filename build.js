@@ -119,10 +119,12 @@ if (program.changed) {
         }));
     })
     .then(function(results) {
+        //выводим результат
         if (!program.time && !program.unused) {
             console.log(JSON.stringify(results.length > 1 ? results : results[0], null, 4));
         }
 
+        //статистика по подключённым файлам в разных пакетах
         if (program.statistics) {
             results.forEach(function(result) {
                 console.log('\n');
@@ -146,11 +148,14 @@ if (program.changed) {
                 _.pairs(filesUsage).sort(function(a, b) {
                     return b[1] - a[1];
                 }).forEach(function(pair) {
-                    console.log(pair[1], pair[0]);
+                    if (parseInt(pair[1]) > 1) {
+                        console.log(pair[1], pair[0]);
+                    }
                 });
             });
         }
 
+        //неиспользованные файлы
         if (program.unused) {
             var found = [];
             var used = [];
@@ -158,20 +163,20 @@ if (program.changed) {
                 used = used.concat(result.files, _(result.packages).values().flatten().value());
                 var target = config[result.target];
                 found = found.concat(Object.keys(target.sources.$$symbolsMapCache.filesHash)
-                    .filter(function(file) {
-                        return path.extname(file) === '.js';
-                    })
                     .map(function(file) {
                         return library.finalizePath(target, file);
                     }));
             });
             used = _.uniq(used);
             found = _.uniq(found);
+            var unused = _.difference(found, used).sort();
             console.log('Unused js files:');
-            console.log(JSON.stringify(_.difference(found, used).sort(), null, 4));
+            console.log(JSON.stringify(unused.filter(function(x){ return path.extname(x) === '.js'; }), null, 4));
+            console.log('\nUnused css files:');
+            console.log(JSON.stringify(unused.filter(function(x){ return path.extname(x) === '.css'; }), null, 4));
         }
 
-        //copyto
+        //копирование собранных файлов в произвольную папку
         if (program.copyto) {
             var copyFiles = [];
             results.forEach(function(result) {
@@ -193,12 +198,13 @@ if (program.changed) {
             });
         }
 
-        //caching
+        //кеширование данных
         if (!program.nocache) {
             return cache.save();
         }
     })
     .then(function() {
+        //замер времени выполнения
         if (program.time) {
             console.log('executing time: ' + (new Date().getTime() - timeStart));
         }
