@@ -5,13 +5,15 @@ var path = require('path');
 var Q = require('q');
 var glob = Q.denodeify(require('glob'));
 var _ = require('lodash');
+var program = require('commander');
 
 var library = require('./library');
 var cache = require('./cache');
 
-var globCache = ':glob';
-var lastSymbolId = 0;
+var cacheKey = ':glob';
 var cacheInvalidated = false;
+var oldGlobData;
+var lastSymbolId = 0;
 
 /**
  * Сканирует файловую структуру и составляет список доступных символов и связанных с ними файлами
@@ -40,15 +42,15 @@ var SymbolsGrabber = function(target) {
                 fullPath = library.normalizePath(this.__target, source.path, true);
 
                 promise = Q().then(function() {
-                    return cache.getData(globCache, fullPath) ||
+                    return cache.getData(cacheKey, fullPath) ||
                     glob(fullPath + mask).then(function(files) {
                         //удаляем кеш если изменилась файловая структура
-                        var oldGlobCache = cache.getOldGlobCache() && cache.getOldGlobCache()[fullPath];
+                        var oldGlobCache = oldGlobData && oldGlobData[fullPath];
                         if (!cacheInvalidated && oldGlobCache && _.xor(files, oldGlobCache).length > 0) {
                             cache.invalidate();
                             cacheInvalidated = true;
                         }
-                        return cache.setData(globCache, fullPath, files);
+                        return cache.setData(cacheKey, fullPath, files);
                     });
                 });
             }
@@ -158,5 +160,41 @@ SymbolsGrabber.prototype = {
         return SymbolsGrabber.defaultSymbol(ref, source.prefix);
     }
 };
+
+cache.onRestore(function() {
+    var globCache = cache.getDataSection(cacheKey);
+    if (globCache && program.dirChangeInfo) {
+        //удаляем кеш если изменилась структура css-файлов
+        if ((program.added.concat(program.removed))
+                .some(function(x) { return path.extname(x) === '.css'; })) {
+            cache.invalidate();
+        }
+        else {
+            //корректируем кеш исходя из переданных параметров added, removed
+            _.forOwn(globCache, function(files, wildcard) {
+                program.added.forEach(function(addedFile) {
+                    if (addedFile.indexOf(wildcard) === 0) {
+                        if (files.indexOf(addedFile) === -1) {
+                            files.push(addedFile);
+                        }
+                    }
+                });
+
+                program.removed.forEach(function(removedFile) {
+                    if (removedFile.indexOf(wildcard) === 0) {
+                        var i = files.indexOf(removedFile);
+                        if (i !== -1) {
+                            files.splice(i, 1);
+                        }
+                    }
+                });
+            });
+        }
+    }
+    else if (!program.nodirchange) {
+        oldGlobData = globCache;
+        cache.removeDataSection(cacheKey);
+    }
+});
 
 module.exports = SymbolsGrabber;

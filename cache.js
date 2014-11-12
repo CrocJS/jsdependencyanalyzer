@@ -1,3 +1,5 @@
+"use strict";
+
 var path = require('path');
 var fs = require('fs');
 
@@ -7,11 +9,15 @@ var _ = require('lodash');
 var program = require('commander');
 var mkdirp = require('mkdirp');
 
-module.exports = {
+var cache = {
     __cache: {},
     __newCache: {},
+    __onRestore: [],
     __files: {},
 
+    /**
+     * Очистить кеш
+     */
     clear: function() {
         if (program.nocache) {
             return;
@@ -27,6 +33,14 @@ module.exports = {
         }
         this.__cacheCleared = true;
     },
+
+    /**
+     * Возвращает данные из кеша для файла
+     * @param {string} section
+     * @param {string} file
+     * @param [defaults] данные по-умолчанию
+     * @returns {*}
+     */
     getData: function(section, file, defaults) {
         var sectionData = this.__cache[section] || (this.__cache[section] = {});
         var newSectionData = this.__newCache[section] || (this.__newCache[section] = {});
@@ -41,68 +55,77 @@ module.exports = {
         this.__files[file] = true;
         return newSectionData[file] = sectionData[file];
     },
-    getOldGlobCache: function() {
-        return this.__oldGlobCache;
-    },
-    setData: function(section, file, data) {
-        var sectionData = this.__cache[section] || (this.__cache[section] = {});
-        var newSectionData = this.__newCache[section] || (this.__newCache[section] = {});
 
-        newSectionData[file] = sectionData[file] = data;
-        if (section.indexOf(':') !== 0) {
-            this.__files[file] = true;
-        }
-        return data;
+    /**
+     * Возвращает все данные для секции
+     * @param {string} section
+     * @returns {*}
+     */
+    getDataSection: function(section) {
+        return this.__cache[section];
     },
-    restore: function() {
-        var fileName = this.__getFileName();
-        if (!fs.existsSync(fileName)) {
-            return Q();
-        }
-        return Q.denodeify(fs.readFile)(fileName).then(function(data) {
-            data = JSON.parse(data);
-            if (data.files[program.confPath] === fs.statSync(program.confPath).mtime.getTime()) {
-                this.__cache = data.cache;
-                this.__files = data.files;
 
-                var globCache = this.__cache[':glob'];
-                if (globCache && program.dirChangeInfo) {
-                    if ((program.added.concat(program.removed))
-                            .some(function(x) { return path.extname(x) === '.css'; })) {
-                        this.invalidate();
-                    }
-                    else {
-                        _.forOwn(globCache, function(files, wildcard) {
-                            program.added.forEach(function(addedFile) {
-                                if (addedFile.indexOf(wildcard) === 0) {
-                                    if (files.indexOf(addedFile) === -1) {
-                                        files.push(addedFile);
-                                    }
-                                }
-                            });
-
-                            program.removed.forEach(function(removedFile) {
-                                if (removedFile.indexOf(wildcard) === 0) {
-                                    var i = files.indexOf(removedFile);
-                                    if (i !== -1) {
-                                        files.splice(i, 1);
-                                    }
-                                }
-                            });
-                        });
-                    }
-                }
-                else if (!program.nodirchange) {
-                    this.__oldGlobCache = this.__cache[':glob'];
-                    delete this.__cache[':glob'];
-                }
-            }
-        }.bind(this));
-    },
+    /**
+     * Удалить кеш полностью
+     */
     invalidate: function() {
         this.__cache = {};
         this.__files = {};
     },
+
+    /**
+     * Выполнить callback после восстановления кеша
+     * @param {function} callback
+     */
+    onRestore: function(callback) {
+        if (this.__restored) {
+            callback();
+        }
+        else {
+            this.__onRestore.push(callback);
+        }
+    },
+
+    /**
+     * Удалить данные для секции
+     * @param {string} section
+     */
+    removeDataSection: function(section) {
+        delete this.__cache[section];
+    },
+
+    /**
+     * Восстановить кеш (после сохранения)
+     * @returns {Q.promise}
+     */
+    restore: function() {
+        var promise;
+        this.__restored = true;
+
+        var fileName = this.__getFileName();
+        if (!fs.existsSync(fileName)) {
+            promise = Q();
+        }
+        else {
+            promise = Q.denodeify(fs.readFile)(fileName)
+                .then(function(data) {
+                    data = JSON.parse(data);
+                    if (data.files[program.confPath] === fs.statSync(program.confPath).mtime.getTime()) {
+                        this.__cache = data.cache;
+                        this.__files = data.files;
+                    }
+                }.bind(this));
+        }
+
+        return promise.then(function() {
+            _.invoke(this.__onRestore, 'call', global);
+        }.bind(this));
+    },
+
+    /**
+     * Сохранить кеш в файл
+     * @returns {Q.promise}
+     */
     save: function() {
         if (this.__cacheCleared) {
             return Q();
@@ -131,10 +154,28 @@ module.exports = {
         data.files[program.confPath] = fs.statSync(program.confPath).mtime.getTime();
 
         var fileName = this.__getFileName();
-        return Q.denodeify(mkdirp)(path.dirname(fileName), {mode: 0777})
+        return Q.denodeify(mkdirp)(path.dirname(fileName), {mode: parseInt('777', 8)})
             .then(function() {
                 return Q.denodeify(fs.writeFile)(fileName, JSON.stringify(data));
             });
+    },
+
+    /**
+     * Задать данные кеша для файла
+     * @param {string} section
+     * @param {string} file
+     * @param data
+     * @returns {*}
+     */
+    setData: function(section, file, data) {
+        var sectionData = this.__cache[section] || (this.__cache[section] = {});
+        var newSectionData = this.__newCache[section] || (this.__newCache[section] = {});
+
+        newSectionData[file] = sectionData[file] = data;
+        if (section.indexOf(':') !== 0) {
+            this.__files[file] = true;
+        }
+        return data;
     },
 
     /**
@@ -171,3 +212,5 @@ module.exports = {
         return this.__fileName;
     }
 };
+
+module.exports = cache;
