@@ -140,7 +140,8 @@ function build(options) {
             result = results;
             //выводим результат
             if (!isModule && !program.time && !program.unused) {
-                console.log(JSON.stringify(results.length > 1 ? results : results[0], null, 4));
+                var toPrint = results.map(function(x) { return _.omit(x, 'filesHash'); });
+                console.log(JSON.stringify(toPrint.length > 1 ? toPrint : toPrint[0], null, 4));
             }
 
             //статистика по подключённым файлам в разных пакетах
