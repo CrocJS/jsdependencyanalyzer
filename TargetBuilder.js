@@ -164,7 +164,7 @@ TargetBuilder.prototype = {
         }
         target = this.resolveTarget(target);
 
-        var result = {};
+        var result = {filesHash: {}};
         var promise = Q();
         if (target.include || addSymbols) {
             if (target.include) {
@@ -178,8 +178,10 @@ TargetBuilder.prototype = {
                 target.include = target.include ? target.include.concat(addSymbols) : addSymbols;
             }
 
-            promise = new DependenciesCalculator(target, ignoreFiles).getResult().then(function(files) {
+            var depCalc = new DependenciesCalculator(target, ignoreFiles);
+            promise = depCalc.getResult().then(function(files) {
                 result.files = files;
+                _.assign(result.filesHash, depCalc.getFilesHash());
             });
         }
 
@@ -189,6 +191,7 @@ TargetBuilder.prototype = {
                 return Q.all(_.chain(target.packages).mapValues(function(pack, packageName) {
                     return this.__buildRaw(pack, result.files).then(function(packageResult) {
                         result.packages[packageName] = packageResult.files || [];
+                        _.assign(result.filesHash, packageResult.filesHash);
                     });
                 }, this).values().value());
             }.bind(this));

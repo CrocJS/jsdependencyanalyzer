@@ -11,7 +11,7 @@ module.exports = {
      * @returns {string}
      */
     finalizePath: function(target, file) {
-        if (target.site === '' || target.site) {
+        if (!program.abspath && (target.site === '' || target.site)) {
             file = this.normalizePath(null, path.relative(path.resolve(program.path, target.site), file));
             if (target.siteAbsolute) {
                 file = '/' + file;

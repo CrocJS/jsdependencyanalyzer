@@ -64,6 +64,14 @@ DependenciesCalculator.prototype = {
     constructor: DependenciesCalculator,
 
     /**
+     * Хеш - имя файла: структура символа
+     * @returns {Object}
+     */
+    getFilesHash: function() {
+        return this.__filesHash;
+    },
+
+    /**
      * Результат работы компонента
      * @returns {Q.promise}
      */
@@ -258,7 +266,7 @@ DependenciesCalculator.prototype = {
             return result.struct.files.filter(function(file) {
                 if (!this.__ignoreFiles[file]) {
                     this.__ignoreFiles[file] = true;
-                    return _.contains(['.js', '.css'], path.extname(file));
+                    return program.separate || path.extname(file) === '.js';
                 }
                 return false;
             }, this);
