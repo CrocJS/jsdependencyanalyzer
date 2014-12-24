@@ -38,6 +38,7 @@ var DependenciesCalculator = function(target, ignoreFiles) {
 
             this.__includedIds = {};
             this.__filesList = [];
+            this.__addDeps = {};
 
             var promise = Q();
             this.__target.include.forEach(function(item) {
@@ -53,8 +54,8 @@ var DependenciesCalculator = function(target, ignoreFiles) {
             var files = this.__filesList;
             var hash = this.__filesHash;
             return files.concat().sort(function(a, b) {
-                var aWeight = hash[a].weight;
-                var bWeight = hash[b].weight;
+                var aWeight = hash[a].weight[a];
+                var bWeight = hash[b].weight[b];
                 return aWeight === bWeight ? files.indexOf(a) - files.indexOf(b) : aWeight - bWeight;
             }.bind(this));
         }.bind(this));
@@ -105,29 +106,34 @@ DependenciesCalculator.prototype = {
         this.__includedIds[symbolStruct.id] = true;
 
         var symbolDependencies = {};
-        var ignoreSymbols = !symbolStruct.ignore ? [] :
-            symbolStruct.ignore.map(this.__getSymbolStruct, this).map(function(x) {return x.id;});
 
-        var processDependencies = function(dependencies) {
+        var processDependencies = function(file, dependencies) {
+            var ignoreSymbols = !file ? {} :
+                _(symbolStruct.ignore[file]).map(this.__getSymbolStruct, this).indexBy('id').value();
+
             _.forOwn(dependencies, function(depType, symbol) {
-                var curSymbolStruct = this.__getSymbolStruct(symbol);
-                if (ignoreSymbols.indexOf(curSymbolStruct.id) === -1 && curSymbolStruct !== symbolStruct) {
-                    symbolDependencies[curSymbolStruct.id] = depType;
+                var curSymbolStruct = this.__getSymbolStruct(symbol, depType.indexOf('Optional') !== -1);
+
+                if (curSymbolStruct && !ignoreSymbols[curSymbolStruct.id] && curSymbolStruct !== symbolStruct) {
                     this.__addSymbolStruct(curSymbolStruct);
+                    if (depType.indexOf('follow') === 0) {
+                        (this.__addDeps[curSymbolStruct.id] || (this.__addDeps[curSymbolStruct.id] = {})
+                        )[symbolStruct.id] = depType.replace('follow', 'require');
+                    }
+                    else {
+                        symbolDependencies[curSymbolStruct.id] = depType;
+                    }
                 }
             }, this);
         }.bind(this);
 
-        var promise = Q();
-        if (symbolStruct.analyze) {
-            promise = Q.all(symbolStruct.files.map(function(file) {
-                return new FileScanner(file, this.__symbolsMap, this.__packages, this.__target.options).getResult()
-                    .then(processDependencies);
-            }, this));
-        }
+        var promise = Q.all(symbolStruct.analyze.map(function(file) {
+            return new FileScanner(file, this.__symbolsMap, this.__packages, this.__target.options).getResult()
+                .then(_.partial(processDependencies, file));
+        }, this));
 
         if (symbolStruct.dependencies) {
-            processDependencies(symbolStruct.dependencies);
+            processDependencies(null, symbolStruct.dependencies);
         }
 
         promise
@@ -163,21 +169,22 @@ DependenciesCalculator.prototype = {
 
                 var weight = 1;
                 result._calcReqWeight = true;
+                _.assign(dependencies, this.__addDeps[symbolStruct.id]);
                 _.forOwn(dependencies, function(depType, symbolStructId) {
-                    if (depType === 'require') {
-                        var incResult = this.__resultsHash[symbolStructId];
-                        if (!incResult) {
+                    if (depType === 'require' || depType === 'requireOptional') {
+                        var reqResult = this.__resultsHash[symbolStructId];
+                        if (!reqResult) {
                             return;
                         }
 
                         var curSymbolsChain = [this.__symbols[symbolStructId]].concat(symbolsChain);
-                        if (incResult._calcReqWeight) {
+                        if (reqResult._calcReqWeight) {
                             throw new Error('Cycle require dependency:\n' + curSymbolsChain.map(function(x) {
                                 return JSON.stringify(x);
                             }).join('\n'));
                         }
 
-                        var reqWeight = incResult.requireWeight(curSymbolsChain);
+                        var reqWeight = reqResult.requireWeight(curSymbolsChain);
                         if (reqWeight >= weight) {
                             weight = reqWeight + 1;
                         }
@@ -197,17 +204,17 @@ DependenciesCalculator.prototype = {
                 var weight = 1;
                 result._calcUseWeight = true;
                 _.forOwn(dependencies, function(depType, symbolStructId) {
-                    if (depType === 'use') {
-                        var reqResult = this.__resultsHash[symbolStructId];
-                        if (!reqResult) {
+                    if (depType === 'use' || depType === 'useOptional') {
+                        var useResult = this.__resultsHash[symbolStructId];
+                        if (!useResult) {
                             return;
                         }
 
-                        if (reqResult._calcUseWeight) {
+                        if (useResult._calcUseWeight) {
                             return;
                         }
 
-                        var useWeight = reqResult.useWeight();
+                        var useWeight = useResult.useWeight();
                         if (useWeight >= weight) {
                             weight = useWeight + 1;
                         }
@@ -239,7 +246,7 @@ DependenciesCalculator.prototype = {
     __findPackages: function() {
         this.__packages = {};
         _.forOwn(this.__symbolsHash, function(symbolDesc, symbol) {
-            if (symbolDesc.type === 'js') {
+            if (_.contains(symbolDesc.types, 'js')) {
                 this.__packages[symbol.split('.')[0]] = true;
             }
         }, this);
@@ -249,6 +256,7 @@ DependenciesCalculator.prototype = {
      * @private
      */
     __finishTargetChunk: function() {
+        //sort symbols
         var results = _.values(this.__resultsHash).sort(function(a, b) {
             var aReqWeight = a.requireWeight();
             var aUseWeight = a.useWeight();
@@ -262,6 +270,7 @@ DependenciesCalculator.prototype = {
                     aFile && bFile ? aFile.localeCompare(bFile) : 0;
         });
 
+        //get files
         var resultFiles = _.flatten(results.map(function(result) {
             return result.struct.files.filter(function(file) {
                 if (!this.__ignoreFiles[file]) {
@@ -277,26 +286,31 @@ DependenciesCalculator.prototype = {
 
     /**
      * @param {string} symbolOrFile
+     * @param {boolean} [optional=false]
      * @returns {Object}
      * @private
      */
-    __getSymbolStruct: function(symbolOrFile) {
+    __getSymbolStruct: function(symbolOrFile, optional) {
         var symbolStruct = this.__symbolsHash[symbolOrFile];
         if (!symbolStruct) {
             symbolOrFile = library.normalizePath(this.__target, symbolOrFile);
             symbolStruct = this.__filesHash[symbolOrFile];
         }
-        if (!symbolStruct) {
+        if (!symbolStruct && !optional) {
             var id = --lastSymbolId;
             var symbol = 'generated' + (-id);
             symbolStruct = this.__filesHash[symbolOrFile] = this.__symbolsHash[symbol] = this.__symbols[id] = {
                 id: id,
                 files: [symbolOrFile],
                 symbols: [symbol],
-                analyze: true,
-                type: 'other',
-                weight: 0
+                types: ['other'],
+                analyze: [symbolOrFile],
+                weight: {},
+                ignore: {},
+                dependencies: {}
             };
+            symbolStruct.weight[symbolOrFile] = 0;
+            symbolStruct.ignore[symbolOrFile] = [];
         }
 
         return symbolStruct;

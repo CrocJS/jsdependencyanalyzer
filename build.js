@@ -56,6 +56,9 @@ function build(options) {
     if (program.cache) {
         program.cache = path.resolve(program.cache);
     }
+    if (!Array.isArray(program.target)) {
+        program.target = [program.target];
+    }
 
     var defaultConfPath = !program.path;
     if (defaultConfPath) {
@@ -230,7 +233,7 @@ function build(options) {
             }
         })
         .then(function() {
-            return result;
+            return result.length > 1 ? result : result[0];
         });
 
     if (!isModule) {

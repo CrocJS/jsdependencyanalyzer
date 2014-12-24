@@ -17,6 +17,7 @@ var lastSymbolId = 0;
 
 /**
  * Сканирует файловую структуру и составляет список доступных символов и связанных с ними файлами
+ * todo оптимизировать
  * @param {Object} target
  * @constructor
  */
@@ -28,14 +29,30 @@ var SymbolsGrabber = function(target) {
 
     this.__target = target;
     this.__symbols = {};
+    this.__symbolsHash = {};
+
+    var sources = _.flatten(this.__target.sources.map(function(source) {
+        if (typeof source.path === 'object') {
+            return _.map(source.path, function(prefix, curPath) {
+                return _.assign({}, source, {
+                    path: curPath,
+                    prefix: prefix
+                });
+            });
+        }
+        return source;
+    }));
 
     this.__result = Q
 
-        .all(this.__target.sources.map(function(source) {
+        .all(sources.map(function(source) {
             var promise;
             var fullPath;
-            var type = source.type || 'js';
-            var mask = source.mask || ('**/*.' + type);
+            var types = source.type || ['js'];
+            if (!Array.isArray(types)) {
+                types = [types];
+            }
+            var mask = source.mask || ('**/*.@(' + types.join('|') + ')');
             var isGlob = !!source.path;
 
             if (source.path) {
@@ -43,15 +60,15 @@ var SymbolsGrabber = function(target) {
 
                 promise = Q().then(function() {
                     return cache.getData(cacheKey, fullPath) ||
-                    glob(fullPath + mask).then(function(files) {
-                        //удаляем кеш если изменилась файловая структура
-                        var oldGlobCache = oldGlobData && oldGlobData[fullPath];
-                        if (!cacheInvalidated && oldGlobCache && _.xor(files, oldGlobCache).length > 0) {
-                            cache.invalidate();
-                            cacheInvalidated = true;
-                        }
-                        return cache.setData(cacheKey, fullPath, files);
-                    });
+                        glob(fullPath + mask).then(function(files) {
+                            //удаляем кеш если изменилась файловая структура
+                            var oldGlobCache = oldGlobData && oldGlobData[fullPath];
+                            if (!cacheInvalidated && oldGlobCache && _.xor(files, oldGlobCache).length > 0) {
+                                cache.invalidate();
+                                cacheInvalidated = true;
+                            }
+                            return cache.setData(cacheKey, fullPath, files);
+                        });
                 });
             }
             else {
@@ -60,17 +77,17 @@ var SymbolsGrabber = function(target) {
                     files = (Array.isArray(source.file) ? source.file : [source.file])
                         .map(function(x) { return library.normalizePath(this.__target, x); }, this);
                 }
-                promise = Q([files]);
+                promise = Q(files);
             }
 
             return promise.then(function(files) {
                 files.forEach(function(file) {
                     var ref = isGlob && file.substr(fullPath.length);
-                    if (ref && source.match && !(new RegExp(source.match).test(ref))) {
-                        return;
-                    }
+                    //if (ref && source.match && !(new RegExp(source.match).test(ref))) {
+                    //    return;
+                    //}
 
-                    ref = ref && ref.substr(0, ref.length - type.length - 1);
+                    ref = ref && ref.slice(0, -path.extname(ref).length);
                     var symbol = !isGlob ? source.symbol :
                         source.symbol ? source.symbol(ref) : this.__getSymbol(ref, source);
                     if (isGlob && symbol === ':default') {
@@ -78,22 +95,41 @@ var SymbolsGrabber = function(target) {
                     }
 
                     if (symbol) {
-                        var id = ++lastSymbolId;
-                        var symbolParam = Array.isArray(symbol) ? symbol[0] : symbol;
-                        var files = Array.isArray(file) ? file : [file];
-                        this.__symbols[id] = {
-                            id: id,
-                            symbols: Array.isArray(symbol) ? symbol : [symbol],
-                            files: files,
-                            analyze: 'analyze' in source ? source.analyze : !!files.length,
-                            dependencies: isGlob && typeof source.dependencies === 'function' ?
-                                source.dependencies(ref, symbolParam) : source.dependencies,
-                            ignore: isGlob && typeof source.ignore === 'function' ?
-                                source.ignore(ref, symbolParam) : source.ignore,
-                            weight: (isGlob && typeof source.weight === 'function' ?
-                                source.weight(ref, symbolParam) : source.weight) || 0,
-                            type: type
-                        };
+                        var symbols = Array.isArray(symbol) ? symbol : [symbol];
+                        var symbolParam = symbols[0];
+                        var struct = this.__symbolsHash[symbolParam];
+                        if (!struct) {
+                            var id = ++lastSymbolId;
+                            struct = this.__symbols[id] = {
+                                id: id,
+                                symbols: [],
+                                files: [],
+                                analyze: [],
+                                dependencies: {},
+                                ignore: {},
+                                weight: {},
+                                types: []
+                            };
+                        }
+
+                        var fileType = path.extname(file).substr(1);
+                        var params = [ref, symbolParam, fileType];
+
+                        struct.symbols = _.union(struct.symbols, symbols);
+                        struct.types = _.union(struct.types, types);
+                        _.assign(struct.dependencies, this.__resolveParam(source.dependencies, params));
+                        if (file) {
+                            struct.files.push(file);
+                            struct.ignore[file] = this.__resolveParam(source.ignore, params) || [];
+                            struct.weight[file] = this.__resolveParam(source.weight, params) || 0;
+                            if ('analyze' in source ? source.analyze : true) {
+                                struct.analyze.push(file);
+                            }
+                        }
+
+                        symbols.forEach(function(symbol) {
+                            this.__symbolsHash[symbol] = struct;
+                        }, this);
                     }
                 }, this);
             }.bind(this));
@@ -127,25 +163,25 @@ SymbolsGrabber.prototype = {
      */
     __createResult: function() {
         var filesHash = {};
-        var symbolsHash = {};
         var typesHash = {};
         _.forOwn(this.__symbols, function(struct) {
             struct.files.forEach(function(file) {
                 filesHash[file] = struct;
             });
             struct.symbols.forEach(function(symbol) {
-                symbolsHash[symbol] = struct;
-                if (!typesHash[struct.type]) {
-                    typesHash[struct.type] = {};
-                }
-                typesHash[struct.type][symbol] = struct;
+                struct.types.forEach(function(type) {
+                    if (!typesHash[type]) {
+                        typesHash[type] = {};
+                    }
+                    typesHash[type][symbol] = struct;
+                });
             });
         });
 
         return Q({
             symbols: this.__symbols,
             filesHash: filesHash,
-            symbolsHash: symbolsHash,
+            symbolsHash: this.__symbolsHash,
             typesHash: typesHash
         });
     },
@@ -158,6 +194,16 @@ SymbolsGrabber.prototype = {
      */
     __getSymbol: function(ref, source) {
         return SymbolsGrabber.defaultSymbol(ref, source.prefix);
+    },
+
+    /**
+     * @param param
+     * @param params
+     * @returns {*}
+     * @private
+     */
+    __resolveParam: function(param, params) {
+        return typeof param === 'function' ? param.apply(global, params) : param;
     }
 };
 

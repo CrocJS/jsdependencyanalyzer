@@ -18,7 +18,11 @@ var rawSymbolsDef = {};
 
 var dependencyTypes = {
     use: 0,
+    useOptional: 0,
     require: 1,
+    requireOptional: 1,
+    follow: 1,
+    followOptional: 1,
     ignore: 2
 };
 var scriptRegexp = /<script(?: type="text\/javascript")?>([\s\S]*?)<\/script>/g;
@@ -255,16 +259,17 @@ FileScanner.prototype = {
      */
     __scanFile: function(content, filePath) {
         var extName = path.extname(filePath);
-        var isHtml = extName !== '.js' && extName !== '.css';
+        var isPhp = extName === '.php';
+        var isTpl = extName !== '.js' && extName !== '.css';
         var isJs = extName === '.js';
 
-        if (isHtml && (content.indexOf('<?php //+ignore') === 0 || content.indexOf('<?php /*+ignore*/') === 0)) {
+        if (isTpl && (content.indexOf('<?php //+ignore') === 0 || content.indexOf('<?php /*+ignore*/') === 0)) {
             return;
         }
 
         this.__parseComments(content);
 
-        if (isHtml || isJs) {
+        if (isTpl || isJs) {
             this.__scanMatches(content, this.__options.htmlSymbolRegexp, this.__options.htmlSymbolsMap);
 
             //scan css
@@ -285,12 +290,14 @@ FileScanner.prototype = {
             this.__parseJS(content);
         }
 
-        if (isHtml) {
+        if (isTpl) {
             var scriptMatch;
             while (scriptMatch = scriptRegexp.exec(content)) {
                 this.__parseJS(scriptMatch[1], true);
             }
+        }
 
+        if (isPhp) {
             var includeMatch;
             while (includeMatch = phpIncludeRegexp.exec(content)) {
                 if (!includeMatch[2]) {
