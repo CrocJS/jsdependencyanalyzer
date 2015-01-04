@@ -246,7 +246,8 @@ DependenciesCalculator.prototype = {
     __findPackages: function() {
         this.__packages = {};
         _.forOwn(this.__symbolsHash, function(symbolDesc, symbol) {
-            if (_.contains(symbolDesc.types, 'js')) {
+            //todo вынести дополнительные типы в конфиг
+            if (_.contains(symbolDesc.types, 'js') || _.contains(symbolDesc.types, 'coffee')) {
                 this.__packages[symbol.split('.')[0]] = true;
             }
         }, this);
@@ -275,7 +276,7 @@ DependenciesCalculator.prototype = {
             return result.struct.files.filter(function(file) {
                 if (!this.__ignoreFiles[file]) {
                     this.__ignoreFiles[file] = true;
-                    return program.separate || path.extname(file) === '.js';
+                    return program.separate || !program.filterjs || path.extname(file) === '.js';
                 }
                 return false;
             }, this);

@@ -263,6 +263,12 @@ FileScanner.prototype = {
         var isTpl = extName !== '.js' && extName !== '.css';
         var isJs = extName === '.js';
 
+        if (extName === '.coffee') {
+            var coffeeCompiler = require('iced-coffee-script').compile;
+            content = coffeeCompiler(content, {bare: true});
+            isJs = true;
+        }
+
         if (isTpl && (content.indexOf('<?php //+ignore') === 0 || content.indexOf('<?php /*+ignore*/') === 0)) {
             return;
         }

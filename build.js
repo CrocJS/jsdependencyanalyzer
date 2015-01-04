@@ -31,6 +31,7 @@ function build(options) {
         .option('-d, --dependencies [dependencies]', 'Print dependencies between files')
         .option('-e, --debug [debug]', 'Debug mode (print stack for errors)')
         .option('--separate', 'Group files by type')
+        .option('--filterjs [filterjs]', 'Reject all non js files from result (for separate === false)', true)
         .option('--time', 'Print executing time')
         .option('--nocache', 'Build without cache')
         .option('--copyto [copyto]', 'Copy result files to folder')
