@@ -276,7 +276,7 @@ DependenciesCalculator.prototype = {
             return result.struct.files.filter(function(file) {
                 if (!this.__ignoreFiles[file]) {
                     this.__ignoreFiles[file] = true;
-                    return program.separate || !program.filterjs || path.extname(file) === '.js';
+                    return program.separate || program.alltypes || path.extname(file) === '.js';
                 }
                 return false;
             }, this);

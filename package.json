@@ -1,6 +1,6 @@
 {
   "name": "jsDependencyAnalizer",
-  "version": "1.0.0-a",
+  "version": "1.0.0-b",
   "dependencies": {
     "commander": "1.3.2",
     "glob": "*",
@@ -14,8 +14,8 @@
   "readme": "npm install\nnode build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js\nnode build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js -t prototype -a D:\\work\\projects\\www\\public\\prototypes\\gui\\popups\\ShopRespond-js.html\nnode build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js > output.txt\nnode build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js -t tpl:main_template.php -o account/page_history_item.php -j\nnode build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js -t tpl:mts_card/page.php -j core > output.txt\n\nnode build.js -p d:\\work\\projects\\launchpad\\config\\jsdep.js --copyto d:\\tmp\\launchpad",
   "readmeFilename": "readme.txt",
   "description": "npm install node build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js node build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js -t prototype -a D:\\work\\projects\\www\\public\\prototypes\\gui\\popups\\ShopRespond-js.html node build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js > output.txt node build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js -t tpl:main_template.php -o account/page_history_item.php -j node build.js -p d:\\work\\projects\\www\\public\\config\\jsdep.js -t tpl:mts_card/page.php -j core > output.txt",
-  "_id": "jsDependencyAnalizer@1.0.0",
-  "_shasum": "025fd9c8e19bc4f20dacb3261ac39cc1177202cc",
-  "_from": "../../../../tmp/npm-11225-69e3aaa5/1420386965270-0.7708238286431879/c93a7c9a9f4fb79528a1d5819327dec4a28e95fa",
-  "_resolved": "git+ssh://gitlab@gitlab.sotmarket.ru:522/front-office/jsdependencyanalyzer.git#c93a7c9a9f4fb79528a1d5819327dec4a28e95fa"
+  "_id": "jsDependencyAnalizer@1.0.0-a",
+  "_shasum": "2c982d02d2ab9ad11d88d2dd6bbf5515b91c700b",
+  "_from": "../../../../tmp/npm-4146-5d14bb86/1420431459632-0.19002656382508576/ec2733bf41f9285b8b92f4821a714c0acfc17eeb",
+  "_resolved": "git+ssh://gitlab@gitlab.sotmarket.ru:522/front-office/jsdependencyanalyzer.git#ec2733bf41f9285b8b92f4821a714c0acfc17eeb"
 }
