@@ -53,9 +53,9 @@ var SymbolsGrabber = function(target) {
                 types = [types];
             }
             var mask = source.mask || ('**/*.@(' + types.join('|') + ')');
-            var isGlob = !!source.path;
+            var isGlob = source.path !== undefined;
 
-            if (source.path) {
+            if (isGlob) {
                 fullPath = library.normalizePath(this.__target, source.path, true);
 
                 promise = Q().then(function() {
