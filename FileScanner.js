@@ -45,12 +45,12 @@ var FileScanner = function(file, symbolsMap, packages, options) {
     this.__rawSymbols = [];
     this.__symbols = {};
     this.__options = options;
-
+    
     if (program.missfile && !fs.existsSync(file)) {
         this.__result = Q({});
         return;
     }
-
+    
     this.__result = Q()
         .then(function() {
             var fromCache = cache.getData(symbolsCache, this.__file);
@@ -63,23 +63,23 @@ var FileScanner = function(file, symbolsMap, packages, options) {
                     this.__rawSymbols = symbols;
                 }.bind(this));
             }
-
+            
             var promise = readFile(this.__file, 'utf8').then(
                 function(content) {
                     this.__scanFile(content, this.__file);
                 }.bind(this),
-
+                
                 function() {
                     throw new Error('Read file error: ' + this.__file);
                 }.bind(this));
-
+            
             return rawSymbolsDef[this.__file] = promise.then(function() {
                 delete rawSymbolsDef[this.__file];
                 cache.setData(symbolsCache, this.__file, this.__rawSymbols);
                 return this.__rawSymbols;
             }.bind(this));
         }.bind(this))
-
+        
         .then(function() {
             var fromCache = program.nodirchange && cache.getData(processedSymbolsCache, this.__file);
             if (fromCache) {
@@ -93,16 +93,16 @@ var FileScanner = function(file, symbolsMap, packages, options) {
                     }
                 }, this);
             }
-
+            
             cache.setData(processedSymbolsCache, this.__file, this.__symbols);
-
+            
             return this.__symbols;
         }.bind(this));
 };
 
 FileScanner.prototype = {
     constructor: FileScanner,
-
+    
     /**
      * Результат работы компонента
      * @returns {Q}
@@ -110,7 +110,7 @@ FileScanner.prototype = {
     getResult: function() {
         return this.__result;
     },
-
+    
     /**
      * @param {string} symbol
      * @param [dependencyType]
@@ -132,7 +132,7 @@ FileScanner.prototype = {
             }
         }
     },
-
+    
     /**
      * @param struct
      * @returns {*}
@@ -140,7 +140,7 @@ FileScanner.prototype = {
      */
     __composeSymbol: function(struct) {
         var operand = this.__getOperand(struct);
-
+        
         if (operand === 'name') {
             return [struct[1]];
         }
@@ -150,7 +150,7 @@ FileScanner.prototype = {
         }
         return false;
     },
-
+    
     /**
      * @param struct
      * @param [useSymbol=false]
@@ -160,7 +160,7 @@ FileScanner.prototype = {
         if (!Array.isArray(struct)) {
             return;
         }
-
+        
         var symbol = this.__composeSymbol(struct);
         if (symbol) {
             this.__rawSymbols.push({symbol: symbol, depType: useSymbol ? 'use' : 'require'});
@@ -174,7 +174,7 @@ FileScanner.prototype = {
             }, this);
         }
     },
-
+    
     /**
      * @param struct
      * @returns {string}
@@ -187,7 +187,7 @@ FileScanner.prototype = {
                     !struct.length || Array.isArray(struct[0]) || !struct[0] ? 'nope' :
                         typeof struct[0] === 'string' ? struct[0] : struct[0].name;
     },
-
+    
     /**
      * @param text
      * @private
@@ -205,7 +205,7 @@ FileScanner.prototype = {
             }
         }
     },
-
+    
     /**
      * @param {string} content
      * @param {boolean} [suppressErrors=false]
@@ -223,12 +223,12 @@ FileScanner.prototype = {
         else {
             parsedJS = parsejs.parse(content, false, true);
         }
-
+        
         if (parsedJS) {
             this.__findSymbols(parsedJS, false);
         }
     },
-
+    
     /**
      * @private
      */
@@ -251,33 +251,36 @@ FileScanner.prototype = {
             }
         }, this);
     },
-
+    
     /**
      * @param {string} content
-     * @param {string} filePath
+     * @param {string} [filePath]
      * @private
      */
     __scanFile: function(content, filePath) {
-        var extName = path.extname(filePath);
+        var extName = filePath && path.extname(filePath);
+        var isInlineJs = !extName;
         var isPhp = extName === '.php';
-        var isTpl = extName !== '.js' && extName !== '.css';
+        var isTpl = !isInlineJs && extName !== '.js' && extName !== '.css';
         var isJs = extName === '.js';
-
+        
         if (extName === '.coffee') {
             var coffeeCompiler = require('iced-coffee-script').compile;
             content = coffeeCompiler(content, {bare: true});
             isJs = true;
         }
-
+        
         if (isTpl && (content.indexOf('<?php //+ignore') === 0 || content.indexOf('<?php /*+ignore*/') === 0)) {
             return;
         }
-
-        this.__parseComments(content);
-
+        
+        if (!isInlineJs) {
+            this.__parseComments(content);
+        }
+        
         if (isTpl || isJs) {
             this.__scanMatches(content, this.__options.htmlSymbolRegexp, this.__options.htmlSymbolsMap);
-
+            
             //scan css
             var cssHash = this.__symbolsMap.typesHash.css;
             if (cssHash) {
@@ -290,19 +293,22 @@ FileScanner.prototype = {
                 }
             }
         }
-
+    
         if (isJs) {
             this.__scanMatches(content, this.__options.jsSymbolRegexp, this.__options.jsSymbolsMap);
-            this.__parseJS(content);
         }
-
+        
+        if (isJs || isInlineJs) {
+            this.__parseJS(content, isInlineJs);
+        }
+        
         if (isTpl) {
             var scriptMatch;
             while (scriptMatch = scriptRegexp.exec(content)) {
-                this.__parseJS(scriptMatch[1], true);
+                this.__scanFile(scriptMatch[1]);
             }
         }
-
+        
         if (isPhp) {
             var includeMatch;
             while (includeMatch = phpIncludeRegexp.exec(content)) {
@@ -316,7 +322,7 @@ FileScanner.prototype = {
             }
         }
     },
-
+    
     /**
      * @param {string} source
      * @param {RegExp} regexp
@@ -342,7 +348,7 @@ FileScanner.prototype = {
                 }
             }, this);
         }
-
+        
         if (map) {
             _.forOwn(map, function(symbol, pattern) {
                 if (source.indexOf(pattern) !== -1) {
