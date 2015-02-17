@@ -23,13 +23,9 @@ var cache = {
             return;
         }
 
-        try {
-            fs.unlinkSync(this.__getFileName());
-        }
-        catch (ex) {
-            if (ex.code !== 'ENOENT') {
-                throw ex;
-            }
+        var fileName = this.__getFileName();
+        if (fs.existsSync(fileName)) {
+            fs.unlinkSync(fileName);
         }
         this.__cacheCleared = true;
     },
