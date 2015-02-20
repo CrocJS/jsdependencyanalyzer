@@ -3,8 +3,41 @@
 var Q = require('q');
 var path = require('path');
 var program = require('commander');
+var _ = require('lodash');
 
 module.exports = {
+    /**
+     * @param target
+     * @param basePath
+     * @param sources
+     */
+    addSources: function(target, basePath, sources) {
+        function getPath(path_) {
+            return path_[0] === '/' || path_[0] === '!' ? path_ : '!' + path.join(basePath, path_);
+        }
+        
+        target.sources = (target.sources || (target.sources = [])).concat(sources.map(function(source) {
+            source = _.clone(source);
+            if (source.file) {
+                if (!Array.isArray(source.file)) {
+                    source.file = [source.file];
+                }
+                source.file = source.file.map(getPath);
+            }
+            if (source.path) {
+                if (typeof source.path === 'string') {
+                    source.path = getPath(source.path);
+                }
+                else {
+                    source.path = _(source.path)
+                        .map(function(key, value) { return [getPath(key), value]; })
+                        .zipObject().value();
+                }
+            }
+            return source;
+        }));
+    },
+    
     /**
      * @param target
      * @param file
@@ -19,7 +52,7 @@ module.exports = {
         }
         return file;
     },
-
+    
     /**
      * @param target
      * @param path_
@@ -34,9 +67,9 @@ module.exports = {
         if ((root === '' || root) && path_.indexOf('/') === 0) {
             path_ = path_.substr(1);
         }
-
-        var normalized = ((root === '' || root) ? path.resolve(root, path_) : path.normalize(path_)).replace(/[\\\/]+/g,
-            '/');
+        
+        var normalized = ((root === '' || root) ? path.resolve(root, path_) : path.normalize(path_))
+            .replace(/[\\\/]+/g, '/');
         if (addSlash && normalized[normalized.length - 1] !== '/') {
             normalized += '/';
         }

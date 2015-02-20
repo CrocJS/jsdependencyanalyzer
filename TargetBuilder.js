@@ -20,7 +20,7 @@ var TargetBuilder = function(targets) {
 
 TargetBuilder.prototype = {
     constructor: TargetBuilder,
-
+    
     build: function(targetName) {
         if (!this.__targets[targetName]) {
             throw new Error('No such target: ' + targetName);
@@ -32,7 +32,7 @@ TargetBuilder.prototype = {
                 throw new Error('No such package "' + program.only + '" in target "' + targetName + '"');
             }
         }
-
+        
         return this.__buildRaw(target, null, program.add ? [program.add] : null)
             .then(function(result) {
                 result.target = targetName;
@@ -61,11 +61,11 @@ TargetBuilder.prototype = {
                         result.packages = _.mapValues(result.packages, separateFiles);
                     }
                 }
-
+                
                 return result;
             });
     },
-
+    
     /**
      * @param {Array.<string>} names
      * @returns {Array.<Object>}
@@ -78,7 +78,7 @@ TargetBuilder.prototype = {
             .flatten()
             .value();
     },
-
+    
     /**
      * @param {Object} target
      * @param {boolean} [isPackage=false]
@@ -88,7 +88,7 @@ TargetBuilder.prototype = {
         if (target.ready) {
             return target;
         }
-
+        
         if ('site' in target) {
             target.site = path.resolve(program.path, target.site);
         }
@@ -98,26 +98,29 @@ TargetBuilder.prototype = {
         if ('root' in target) {
             target.root = path.resolve(program.path, target.root);
         }
-
+        
         if (!target.extend) {
             target.ready = true;
             return target;
         }
-
+        
         var parentTarget = typeof target.extend === 'string' ?
             this.resolveTarget(this.__targets[target.extend]) : target.extend;
         if ('root' in parentTarget && !('root' in target)) {
             target.root = parentTarget.root;
         }
-
+        if (!target.root) {
+            target.root = program.path;
+        }
+        
         if ('site' in parentTarget && !('site' in target)) {
             target.site = parentTarget.site;
         }
-
+        
         if ('js' in parentTarget && !('js' in target)) {
             target.js = parentTarget.js;
         }
-
+        
         if (parentTarget.siteAbsolute && !('siteAbsolute' in target)) {
             target.siteAbsolute = parentTarget.siteAbsolute;
         }
@@ -127,7 +130,7 @@ TargetBuilder.prototype = {
         if (parentTarget.include && !isPackage) {
             target.include = target.include ? parentTarget.include.concat(target.include) : parentTarget.include.concat();
         }
-
+        
         if (parentTarget.options) {
             target.options = target.options ?
                 _.assign(_.clone(parentTarget.options), target.options) :
@@ -136,7 +139,7 @@ TargetBuilder.prototype = {
         else if (!target.options) {
             target.options = {};
         }
-
+        
         if (target.packages) {
             _.forOwn(target.packages, function(pack, packageName) {
                 pack.extend = target;
@@ -146,11 +149,13 @@ TargetBuilder.prototype = {
         if (parentTarget.packages && !isPackage) {
             target.packages = _.assign(_.clone(parentTarget.packages), target.packages || {});
         }
-
+        
+        this.__includeExternals(target);
+        
         target.ready = true;
         return target;
     },
-
+    
     /**
      * Собрать цель
      * @param {Object} target
@@ -163,7 +168,7 @@ TargetBuilder.prototype = {
             target = this.__targets[target];
         }
         target = this.resolveTarget(target);
-
+        
         var result = {filesHash: {}};
         var promise = Q();
         if (target.include || addSymbols) {
@@ -173,18 +178,18 @@ TargetBuilder.prototype = {
                     this.resolveTarget(this.__targets[dependency.substr('target:'.length)]).include || [] : dependency;
                 }, this));
             }
-
+            
             if (addSymbols) {
                 target.include = target.include ? target.include.concat(addSymbols) : addSymbols;
             }
-
+            
             var depCalc = new DependenciesCalculator(target, ignoreFiles);
             promise = depCalc.getResult().then(function(files) {
                 result.files = files;
                 _.assign(result.filesHash, depCalc.getFilesHash());
             });
         }
-
+        
         if (target.packages) {
             result.packages = {};
             promise = promise.then(function() {
@@ -196,8 +201,19 @@ TargetBuilder.prototype = {
                 }, this).values().value());
             }.bind(this));
         }
-
+        
         return promise.thenResolve(result);
+    },
+    
+    /**
+     * @param target
+     * @private
+     */
+    __includeExternals: function(target) {
+        var externals = !target.external ? [] : Array.isArray(target.external) ? target.external : [target.external];
+        externals.forEach(function(external) {
+            external(library, target);
+        });
     }
 };
 
