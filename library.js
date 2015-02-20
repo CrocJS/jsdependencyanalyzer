@@ -13,7 +13,7 @@ module.exports = {
      */
     addSources: function(target, basePath, sources) {
         function getPath(path_) {
-            return path_[0] === '/' || path_[0] === '!' ? path_ : '!' + path.join(basePath, path_);
+            return path_[0] === '/' || path_[0].indexOf('!!') === 0 ? path_ : '!!' + path.join(basePath, path_);
         }
         
         target.sources = (target.sources || (target.sources = [])).concat(sources.map(function(source) {
