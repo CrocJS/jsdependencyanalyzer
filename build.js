@@ -120,7 +120,7 @@ function build(options) {
     program.target = targetBuilder.flattenTargets(program.target);
 
     //process program.added/removed
-    var sitePath = path.resolve(program.path, targetBuilder.resolveTarget(config[program.target[0]]).site);
+    var sitePath = path.resolve(program.path, targetBuilder.resolveTarget(config[program.target[0]]).site || '');
     var getAbsPath = function(relPath) {
         return library.normalizePath(null,
             path.resolve(sitePath, relPath.indexOf('/') === 0 ? relPath.substr(1) : relPath));
