@@ -12,8 +12,15 @@ module.exports = {
      * @param sources
      */
     addSources: function(target, basePath, sources) {
+        if (!sources) {
+            sources = basePath;
+            basePath = null;
+        }
+        
         function getPath(path_) {
-            return path_[0] === '/' || path_[0].indexOf('!!') === 0 ? path_ : '!!' + path.join(basePath, path_);
+            return path_[0] === '?' ? path_.substr(1) :
+                !basePath || path_[0] === '/' || path_.indexOf('!!') === 0 ?
+                    path_ : '!!' + path.join(basePath, path_);
         }
         
         target.sources = (target.sources || (target.sources = [])).concat(sources.map(function(source) {
@@ -30,7 +37,7 @@ module.exports = {
                 }
                 else {
                     source.path = _(source.path)
-                        .map(function(key, value) { return [getPath(key), value]; })
+                        .map(function(value, key) { return [getPath(key), value]; })
                         .zipObject().value();
                 }
             }
