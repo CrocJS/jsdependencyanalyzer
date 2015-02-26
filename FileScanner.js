@@ -112,23 +112,27 @@ FileScanner.prototype = {
     },
     
     /**
+     * @param {boolean} options
      * @param {string} symbol
-     * @param [dependencyType]
-     * @param [checkWildcard = false]
+     * @param [options.depType]
+     * @param [options.wildcard = false]
+     * @param [options.meta]
      */
-    __addDependency: function(symbol, dependencyType, checkWildcard) {
-        if (checkWildcard && symbol[symbol.length - 1] === '*' && symbol[symbol.length - 2] === '.') {
+    __addDependency: function(options) {
+        var symbol = options.symbol;
+        var depType = options.depType;
+        if (options.wildcard && symbol[symbol.length - 1] === '*' && symbol[symbol.length - 2] === '.') {
             var prefix = symbol.substr(0, symbol.length - 1);
             _.forOwn(this.__symbolsMap.symbolsHash, function(value, name) {
                 if (name.substr(0, prefix.length) === prefix) {
-                    this.__addDependency(name, dependencyType);
+                    this.__addDependency({symbol: name, depType: depType, meta: options.meta});
                 }
             }, this);
         }
         else {
             var curSymbolType = this.__symbols[symbol];
-            if (!curSymbolType || dependencyTypes[curSymbolType] < dependencyTypes[dependencyType]) {
-                this.__symbols[symbol] = dependencyType;
+            if (!curSymbolType || dependencyTypes[curSymbolType] < dependencyTypes[depType]) {
+                this.__symbols[symbol] = options.meta ? {depType: depType, meta: options.meta} : depType;
             }
         }
     },
@@ -240,14 +244,14 @@ FileScanner.prototype = {
                     while (symbol.length) {
                         var curSymbol = symbol.join('.');
                         if (this.__symbolsMap.symbolsHash[curSymbol]) {
-                            this.__addDependency(curSymbol, symbolDesc.depType);
+                            this.__addDependency({symbol: curSymbol, depType: symbolDesc.depType});
                         }
                         symbol.pop();
                     }
                 }
             }
             else {
-                this.__addDependency(symbolDesc.symbol, symbolDesc.depType, symbolDesc.wildcard);
+                this.__addDependency(symbolDesc);
             }
         }, this);
     },
@@ -263,6 +267,19 @@ FileScanner.prototype = {
         var isPhp = extName === '.php';
         var isTpl = !isInlineJs && extName !== '.js' && extName !== '.css';
         var isJs = extName === '.js';
+        
+        if (path.basename(filePath) === 'bower.json') {
+            var bower = JSON.parse(content);
+            (Array.isArray(bower.main) ? bower.main : [bower.main]).forEach(function(include) {
+                if (path.extname(include) === '.js') {
+                    this.__rawSymbols.push({
+                        symbol: '!!' + path.join(path.dirname(filePath), include),
+                        meta: {bower: true},
+                        depType: 'use'
+                    });
+                }
+            }, this);
+        }
         
         if (extName === '.coffee') {
             var coffeeCompiler = require('iced-coffee-script').compile;
@@ -293,7 +310,7 @@ FileScanner.prototype = {
                 }
             }
         }
-    
+        
         if (isJs) {
             this.__scanMatches(content, this.__options.jsSymbolRegexp, this.__options.jsSymbolsMap);
         }
