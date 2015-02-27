@@ -268,7 +268,7 @@ FileScanner.prototype = {
         var isTpl = !isInlineJs && extName !== '.js' && extName !== '.css';
         var isJs = extName === '.js';
         
-        if (path.basename(filePath) === 'bower.json') {
+        if (path.basename(filePath) === '.bower.json') {
             var bower = JSON.parse(content);
             (Array.isArray(bower.main) ? bower.main : [bower.main]).forEach(function(include) {
                 if (path.extname(include) === '.js') {
