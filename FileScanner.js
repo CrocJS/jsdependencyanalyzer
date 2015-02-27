@@ -28,7 +28,7 @@ var dependencyTypes = {
 var scriptRegexp = /<script(?: type="text\/javascript")?>([\s\S]*?)<\/script>/g;
 var phpIncludeRegexp = /\b(?:include|require)(?:_once)?\s*(?:\(\s*)?(?:(?:__DIR__|dirname\(__FILE__\))\s*\.\s*)?['"]([\w\d\/_\-\.]+)['"]\s*(?:\)\s*)?(?:;|\?>)( ?\/\/jsdep:ignore)?/g;
 var commentRegexp =
-    new RegExp('/[/*] ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/)?(?:\\n|$)', 'g');
+    new RegExp('(?:/[/*]|<!--) ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/|-->)?(?:\\n|$)', 'g');
 
 /**
  * Сканирует файл на наличие в нём символов
@@ -198,7 +198,7 @@ FileScanner.prototype = {
      */
     __parseComments: function(text) {
         var match;
-        while (match = commentRegexp.exec(text)) {
+        while (match = commentRegexp.exec(text)) { // jshint ignore:line
             if (match) {
                 if (match[1] === 'require' && match[2] === 'all') {
                     this.__requireAll = true;
@@ -321,14 +321,14 @@ FileScanner.prototype = {
         
         if (isTpl) {
             var scriptMatch;
-            while (scriptMatch = scriptRegexp.exec(content)) {
+            while (scriptMatch = scriptRegexp.exec(content)) { // jshint ignore:line
                 this.__scanFile(scriptMatch[1]);
             }
         }
         
         if (isPhp) {
             var includeMatch;
-            while (includeMatch = phpIncludeRegexp.exec(content)) {
+            while (includeMatch = phpIncludeRegexp.exec(content)) { // jshint ignore:line
                 if (!includeMatch[2]) {
                     //!! - absolute path
                     this.__rawSymbols.push({
@@ -357,10 +357,10 @@ FileScanner.prototype = {
                         re: re, symbol: function(match) {
                             return match[1];
                         }
-                    }
+                    };
                 }
                 var match;
-                while (match = re.re.exec(source)) {
+                while (match = re.re.exec(source)) { // jshint ignore:line
                     this.__rawSymbols.push({symbol: re.symbol.call(this.__options, match), depType: 'use'});
                 }
             }, this);
