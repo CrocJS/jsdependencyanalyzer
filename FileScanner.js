@@ -28,7 +28,7 @@ var dependencyTypes = {
 var scriptRegexp = /<script(?: type="text\/javascript")?>([\s\S]*?)<\/script>/g;
 var phpIncludeRegexp = /\b(?:include|require)(?:_once)?\s*(?:\(\s*)?(?:(?:__DIR__|dirname\(__FILE__\))\s*\.\s*)?['"]([\w\d\/_\-\.]+)['"]\s*(?:\)\s*)?(?:;|\?>)( ?\/\/jsdep:ignore)?/g;
 var commentRegexp =
-    new RegExp('(?:/[/*]|<!--) ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/|-->)?(?:\\n|$)', 'g');
+    new RegExp('(?:/[/*]|<!--) ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/|-->)?(?:\\r?\\n|$)', 'g');
 
 /**
  * Сканирует файл на наличие в нём символов
