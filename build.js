@@ -6,6 +6,7 @@ var fs = require('fs');
 var program = require('commander');
 var _ = require('lodash');
 var Q = require('q');
+//Q.longStackSupport = true;
 var mkdirp = require('mkdirp');
 
 var library = require('./library');

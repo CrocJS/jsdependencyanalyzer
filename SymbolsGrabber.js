@@ -43,9 +43,23 @@ var SymbolsGrabber = function(target) {
         return source;
     }));
     
+    var excludes = {};
+    sources.forEach(function(source, i) {
+        if (source.exclude) {
+            (Array.isArray(source.exclude) ? source.exclude : [source.exclude])
+                .forEach(function(exclude) {
+                    excludes[exclude] = i;
+                });
+        }
+    });
+    
     this.__result = Q
         
-        .all(sources.map(function(source) {
+        .all(sources.map(function(source, sourceIndex) {
+            if (source.exclude) {
+                return;
+            }
+            
             var promise;
             var fullPath;
             var types = source.type || ['js'];
@@ -97,6 +111,11 @@ var SymbolsGrabber = function(target) {
                     if (symbol) {
                         var symbols = Array.isArray(symbol) ? symbol : [symbol];
                         var symbolParam = symbols[0];
+                        
+                        if (symbols.some(function(x) { return x in excludes && excludes[x] > sourceIndex; })) {
+                            return;
+                        }
+                        
                         var struct = this.__symbolsHash[symbolParam];
                         if (!struct) {
                             var id = ++lastSymbolId;
