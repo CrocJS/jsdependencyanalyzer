@@ -166,7 +166,7 @@ TargetBuilder.prototype = {
         }
         target = this.resolveTarget(target);
         
-        var result = {filesHash: {}};
+        var result = {filesHash: {}, targetObj: target};
         var promise = Q();
         if (target.include || addSymbols) {
             if (target.include) {

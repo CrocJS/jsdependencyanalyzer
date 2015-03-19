@@ -145,7 +145,7 @@ function build(options) {
             result = results;
             //выводим результат
             if (!isModule && !program.time && !program.unused) {
-                var toPrint = results.map(function(x) { return _.omit(x, 'filesHash'); });
+                var toPrint = results.map(function(x) { return _.omit(x, 'filesHash', 'targetObj'); });
                 console.log(JSON.stringify(toPrint.length > 1 ? toPrint : toPrint[0], null, 4));
             }
 
