@@ -26,9 +26,9 @@ var dependencyTypes = {
     ignore: 2
 };
 var scriptRegexp = /<script(?: type="text\/javascript")?>([\s\S]*?)<\/script>/g;
-var phpIncludeRegexp = /\b(?:include|require)(?:_once)?\s*(?:\(\s*)?(?:(?:__DIR__|dirname\(__FILE__\))\s*\.\s*)?['"]([\w\d\/_\-\.]+)['"]\s*(?:\)\s*)?(?:;|\?>)( ?\/\/jsdep:ignore)?/g;
-var commentRegexp =
-    new RegExp('(?:/[/*]|<!--) ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/|-->)?(?:\\r?\\n|$)', 'g');
+var phpIncludeRegexp = /\b(?:include|require)(?:_once)?\s*(?:\(\s*)?(?:(?:__DIR__|dirname\(__FILE__\)|(dirname\(__DIR__\)))\s*\.\s*)?['"]([\w\d\/_\-\.]+)['"]\s*(?:\)\s*)?(?:;|\?>)( ?\/\/jsdep:ignore)?/g;
+var commentRegexp = new RegExp(
+    '(?:/[/*]|<!--) ?\\+(' + Object.keys(dependencyTypes).join('|') + ') (.+?) ?(?:\\*/|-->)?(?:\\r?\\n|$)', 'g');
 
 /**
  * Сканирует файл на наличие в нём символов
@@ -329,10 +329,14 @@ FileScanner.prototype = {
         if (isPhp) {
             var includeMatch;
             while (includeMatch = phpIncludeRegexp.exec(content)) { // jshint ignore:line
-                if (!includeMatch[2]) {
+                if (!includeMatch[3]) {
                     //!! - absolute path
+                    var dir = path.dirname(filePath);
+                    if (includeMatch[1]) {
+                        dir = path.dirname(dir);
+                    }
                     this.__rawSymbols.push({
-                        symbol: '!!' + path.join(path.dirname(filePath), includeMatch[1]),
+                        symbol: '!!' + path.join(dir, includeMatch[2]),
                         depType: 'use'
                     });
                 }
