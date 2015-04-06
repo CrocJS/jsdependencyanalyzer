@@ -103,31 +103,40 @@ TargetBuilder.prototype = {
             var parentTarget = typeof target.extend === 'string' ?
                 this.resolveTarget(this.__targets[target.extend]) : target.extend;
             
-            _.merge(target,
-                _.omit(parentTarget, function(x, key) {
-                    return key[0] === '$' && key[1] === '$' || key === 'external';
-                }),
-                function(a, b) {
-                    if (Array.isArray(a) || Array.isArray(b)) {
-                        return (b || []).concat(a || []);
-                    }
-                    else if (typeof a !== 'object' || typeof b !== 'object') {
-                        return a;
-                    }
-                });
-            
-            if (!target.root) {
-                target.root = program.path;
-            }
+            _.forOwn(parentTarget, function(value, key) {
+                if (key === 'extend' || key === 'external' || key === 'ready' ||
+                    isPackage && (key === 'packages' || key === 'include')) {
+                    return;
+                }
+                if (key === 'sources' || key === 'include') {
+                    target[key] = target[key] ? value.concat(target[key]) : value;
+                }
+                else if (key === 'options' || key === 'packages') {
+                    target[key] = target[key] ? _.assign(_.clone(value), target[key]) : _.clone(value);
+                }
+                else if (!(key in target)) {
+                    target[key] = value;
+                }
+            });
+        }
+        
+        if (!target.root) {
+            target.root = program.path;
+        }
+        if (!target.options) {
+            target.options = {};
+        }
+        if (!target.sources) {
+            target.sources = [];
         }
         
         this.__includeExternals(target);
         
         if (target.packages) {
-            _.forOwn(target.packages, function(pack, packageName) {
+            _.forOwn(target.packages, function(pack) {
                 if (!pack.ready) {
                     pack.extend = target;
-                    target.packages[packageName] = this.resolveTarget(pack, true);
+                    this.resolveTarget(pack, true);
                 }
             }, this);
         }
