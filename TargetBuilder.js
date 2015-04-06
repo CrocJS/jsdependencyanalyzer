@@ -102,52 +102,35 @@ TargetBuilder.prototype = {
         if (target.extend) {
             var parentTarget = typeof target.extend === 'string' ?
                 this.resolveTarget(this.__targets[target.extend]) : target.extend;
-            if ('root' in parentTarget && !('root' in target)) {
-                target.root = parentTarget.root;
-            }
+            
+            _.merge(target,
+                _.omit(parentTarget, function(x, key) {
+                    return key[0] === '$' && key[1] === '$' || key === 'external';
+                }),
+                function(a, b) {
+                    if (Array.isArray(a) || Array.isArray(b)) {
+                        return (b || []).concat(a || []);
+                    }
+                    else if (typeof a !== 'object' || typeof b !== 'object') {
+                        return a;
+                    }
+                });
+            
             if (!target.root) {
                 target.root = program.path;
-            }
-    
-            if ('site' in parentTarget && !('site' in target)) {
-                target.site = parentTarget.site;
-            }
-    
-            if ('js' in parentTarget && !('js' in target)) {
-                target.js = parentTarget.js;
-            }
-    
-            if (parentTarget.siteAbsolute && !('siteAbsolute' in target)) {
-                target.siteAbsolute = parentTarget.siteAbsolute;
-            }
-            if (parentTarget.sources) {
-                target.sources = target.sources ? parentTarget.sources.concat(target.sources) : parentTarget.sources;
-            }
-            if (parentTarget.include && !isPackage) {
-                target.include = target.include ? parentTarget.include.concat(target.include) : parentTarget.include.concat();
-            }
-    
-            if (parentTarget.options) {
-                target.options = target.options ?
-                    _.assign(_.clone(parentTarget.options), target.options) :
-                    _.clone(parentTarget.options);
-            }
-            else if (!target.options) {
-                target.options = {};
-            }
-    
-            if (target.packages) {
-                _.forOwn(target.packages, function(pack, packageName) {
-                    pack.extend = target;
-                    target.packages[packageName] = this.resolveTarget(pack, true);
-                }, this);
-            }
-            if (parentTarget.packages && !isPackage) {
-                target.packages = _.assign(_.clone(parentTarget.packages), target.packages || {});
             }
         }
         
         this.__includeExternals(target);
+        
+        if (target.packages) {
+            _.forOwn(target.packages, function(pack, packageName) {
+                if (!pack.ready) {
+                    pack.extend = target;
+                    target.packages[packageName] = this.resolveTarget(pack, true);
+                }
+            }, this);
+        }
         
         target.ready = true;
         return target;
@@ -207,10 +190,11 @@ TargetBuilder.prototype = {
      * @private
      */
     __includeExternals: function(target) {
-        var externals = !target.external ? [] : Array.isArray(target.external) ? target.external : [target.external];
-        externals.forEach(function(external) {
-            external(library, target);
-        });
+        if (target.external) {
+            _.flatten(target.external).forEach(function(external) {
+                external(target, library);
+            });
+        }
     }
 };
 

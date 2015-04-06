@@ -8,6 +8,26 @@ var _ = require('lodash');
 module.exports = {
     /**
      * @param target
+     * @param includes
+     */
+    addIncludes: function(target, includes) {
+        target.include = (target.include || (target.include = [])).concat(includes);
+    },
+    
+    /**
+     * @param target
+     * @param options
+     */
+    addOptions: function(target, options) {
+        _.merge(target.options || (target.options = {}), options, function(a, b) {
+            if (Array.isArray(a) || Array.isArray(b)) {
+                return (a || []).concat(b || []);
+            }
+        });
+    },
+    
+    /**
+     * @param target
      * @param basePath
      * @param sources
      */
@@ -58,6 +78,21 @@ module.exports = {
             }
         }
         return file;
+    },
+    
+    /**
+     * @param dest
+     * @param source
+     */
+    merge: function(dest, source) {
+        if (!source) {
+            return dest;
+        }
+        return _.merge(dest, source, function(a, b) {
+            if (Array.isArray(a) || Array.isArray(b)) {
+                return (a || []).concat(b || []);
+            }
+        });
     },
     
     /**
