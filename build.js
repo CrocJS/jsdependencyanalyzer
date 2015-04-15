@@ -17,13 +17,14 @@ var isModule = require.main !== module;
 
 module.exports.build = build;
 
-function build(options) {
+function build(options, callback) {
     process.umask(parseInt('000', 8));
-
+    
     var commaSeparated = function(x) { return _.compact(x.split(',')); };
-
+    
     program
         .option('-p, --path [path]', 'Path to jsdep.js')
+        .option('--config [config]', 'String representation of config')
         .option('--cache [cache]', 'Path to cache directory', path.join(__dirname, 'cache'))
         .option('-t, --target [target]', 'Target(s) to build (separated by comma)', commaSeparated, ['current'])
         .option('-a, --add [add]', 'Add file or symbol')
@@ -49,9 +50,9 @@ function build(options) {
         'Sources files which have been removed. Specify --removed= if there is no removed files.',
         commaSeparated)
         .parse(isModule ? [] : process.argv);
-
+    
     _.assign(program, options);
-
+    
     if (program.path) {
         program.path = path.resolve(program.path);
     }
@@ -61,27 +62,34 @@ function build(options) {
     if (!Array.isArray(program.target)) {
         program.target = [program.target];
     }
-
+    if (typeof program.config === 'string') {
+        program.config = JSON.parse(program.config);
+    }
+    
     var defaultConfPath = !program.path;
     if (defaultConfPath) {
-        program.path = path.join(__dirname, 'jsdep.js');
+        program.path = path.join(process.cwd(), 'jsdep.js');
     }
-
+    else if (program.path && program.config && fs.statSync(program.path).isDirectory()) {
+        program.path = path.join(program.path, 'jsdep.js');
+        program.nocache = true;
+    }
+    
     if (program.added && program.removed) {
         program.dirChangeInfo = true;
     }
     if (!program.nodirchange && program.dirChangeInfo && !program.added.length && !program.removed.length) {
         program.nodirchange = true;
     }
-
+    
     var timeStart;
     if (program.time) {
         timeStart = program.timeStart = new Date().getTime();
     }
-
+    
     var confPath = program.confPath = program.path;
     program.path = path.dirname(program.path);
-
+    
     function processError(error) {
         if (program.debug) {
             if (error.stack) {
@@ -96,30 +104,32 @@ function build(options) {
         else {
             console.log('Error!\n' + error.message);
         }
-
+        
         cache.clear();
     }
-
+    
     if (!isModule) {
         process.on('uncaughtException', processError);
     }
-
-    var config;
-    try {
-        config = require(confPath);
-    }
-    catch (ex) {
-        if (defaultConfPath) {
-            program.help();
+    
+    var config = program.config;
+    if (!config) {
+        try {
+            config = require(confPath);
         }
-        throw new Error('Corrupted config file: ' + confPath);
+        catch (ex) {
+            if (defaultConfPath) {
+                program.help();
+            }
+            throw new Error('Corrupted config file: ' + confPath);
+        }
     }
-
+    
     var targetBuilder = new TargetBuilder(config);
-
+    
     //resolve "run" targets
     program.target = targetBuilder.flattenTargets(program.target);
-
+    
     //process program.added/removed
     var sitePath = path.resolve(program.path, targetBuilder.resolveTarget(config[program.target[0]]).site || '');
     var getAbsPath = function(relPath) {
@@ -133,7 +143,7 @@ function build(options) {
     if (program.changed) {
         program.changed = program.changed.map(getAbsPath);
     }
-
+    
     var result;
     var promise = (program.nocache ? Q() : cache.restore())
         .then(function() {
@@ -148,7 +158,7 @@ function build(options) {
                 var toPrint = results.map(function(x) { return _.omit(x, 'filesHash', 'targetObj'); });
                 console.log(JSON.stringify(toPrint.length > 1 ? toPrint : toPrint[0], null, 4));
             }
-
+            
             //статистика по подключённым файлам в разных пакетах
             if (program.statistics) {
                 results.forEach(function(result) {
@@ -156,7 +166,7 @@ function build(options) {
                     if (results.length > 1) {
                         console.log('target: ' + result.target);
                     }
-
+                    
                     console.log('statistics (' + _.size(result.packages) + ' packages)');
                     var filesUsage = {};
                     _.forOwn(result.packages, function(files) {
@@ -169,7 +179,7 @@ function build(options) {
                             }
                         });
                     });
-
+                    
                     _.pairs(filesUsage).sort(function(a, b) {
                         return b[1] - a[1];
                     }).forEach(function(pair) {
@@ -179,7 +189,7 @@ function build(options) {
                     });
                 });
             }
-
+            
             //неиспользованные файлы
             if (program.unused) {
                 var found = [];
@@ -200,7 +210,7 @@ function build(options) {
                 console.log('\nUnused css files:');
                 console.log(JSON.stringify(unused.filter(function(x) { return path.extname(x) === '.css'; }), null, 4));
             }
-
+            
             //копирование собранных файлов в произвольную папку
             if (program.copyto) {
                 var copyFiles = [];
@@ -222,7 +232,7 @@ function build(options) {
                     });
                 });
             }
-
+            
             //кеширование данных
             if (!program.nocache) {
                 return cache.save();
@@ -237,11 +247,14 @@ function build(options) {
         .then(function() {
             return result.length > 1 ? result : result[0];
         });
-
+    
     if (!isModule) {
         promise = promise.catch(processError);
+        return promise;
     }
-    return promise;
+    else {
+        promise.nodeify(callback);
+    }
 }
 
 if (!isModule) {
