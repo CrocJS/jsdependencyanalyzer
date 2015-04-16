@@ -270,15 +270,24 @@ FileScanner.prototype = {
         
         if (path.basename(filePath) === '.bower.json') {
             var bower = JSON.parse(content);
+            if (bower.dependencies) {
+                _.forOwn(bower.dependencies, function(version, dep) {
+                    this.__rawSymbols.push({
+                        symbol: 'bower:' + dep,
+                        depType: 'require'
+                    });
+                }, this);
+            }
             (Array.isArray(bower.main) ? bower.main : [bower.main]).forEach(function(include) {
                 if (path.extname(include) === '.js') {
                     this.__rawSymbols.push({
                         symbol: '!!' + path.join(path.dirname(filePath), include),
                         meta: {bower: true},
-                        depType: 'use'
+                        depType: 'follow'
                     });
                 }
             }, this);
+            return;
         }
         
         if (extName === '.coffee') {
