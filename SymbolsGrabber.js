@@ -165,7 +165,7 @@ var SymbolsGrabber = function(target) {
 };
 
 SymbolsGrabber.defaultSymbol = function(ref, prefix) {
-    return (prefix || '') + ref.replace(/\//g, '.');
+    return (prefix || '') + ref.replace(/\/index$/, '').replace(/\//g, '.');
 };
 
 SymbolsGrabber.prototype = {
