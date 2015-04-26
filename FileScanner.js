@@ -333,6 +333,14 @@ FileScanner.prototype = {
             while (scriptMatch = scriptRegexp.exec(content)) { // jshint ignore:line
                 this.__scanFile(scriptMatch[1]);
             }
+            if (this.__options.tplJs) {
+                this.__options.tplJs.forEach(function(func) {
+                    var code = func(content);
+                    if (code) {
+                        this.__parseJS(content, true);
+                    }
+                }, this);
+            }
         }
         
         if (isPhp) {
