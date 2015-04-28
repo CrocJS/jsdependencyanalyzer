@@ -105,8 +105,8 @@ module.exports = {
         if (path_.indexOf('!!') === 0) {
             path_ = '/' + path.relative(target.root, path_.substr(2));
         }
-        var root = target ? (path_.indexOf('/') === 0 ? target.root : target.js) : null;
-        if ((root === '' || root) && path_.indexOf('/') === 0) {
+        var root = target ? (path_[0] === '/' || path_[0] === '\\' ? target.root : target.js) : null;
+        if ((root === '' || root) && (path_[0] === '/' || path_[0] === '\\')) {
             path_ = path_.substr(1);
         }
         
