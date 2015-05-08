@@ -1,0 +1,17 @@
+{
+    "name"        : "sotmarket/jsdependencyanalyzer",
+    "type"        : "library",
+    "description" : "Анализатор зависимостей JS файлов",
+    "authors"     : [{
+        "name"  : "Артём Бахарев",
+        "email" : "a.bakharev@sotmarket.ru",
+        "role"  : "Developer"
+    }],
+    "require": {
+        "npm-asset/q": "*",
+        "npm-asset/lodash": "*",
+        "npm-asset/glob": "*",
+        "npm-asset/mkdirp": "*",
+        "npm-asset/commander": "1.3.2"
+    }
+}
