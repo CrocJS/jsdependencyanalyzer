@@ -138,7 +138,9 @@ var SymbolsGrabber = function(target) {
                         var params = [ref, symbolParam, fileType];
                         
                         struct.symbols = _.union(struct.symbols, symbols);
-                        struct.types = _.union(struct.types, types);
+                        if (struct.types.indexOf(fileType) === -1) {
+                            struct.types.push(fileType);
+                        }
                         _.assign(struct.dependencies, this.__resolveParam(source.dependencies, params));
                         if (file) {
                             struct.files.push(file);
