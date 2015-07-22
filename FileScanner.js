@@ -66,6 +66,13 @@ var FileScanner = function(file, symbolsMap, packages, options) {
             
             var promise = readFile(this.__file, 'utf8').then(
                 function(content) {
+                    //this.__rawSymbols.push = function(symbol) {
+                    //    if (symbol.symbol === 'b-sbutton set_system mod_main') {
+                    //        console.trace();
+                    //        process.exit();
+                    //    }
+                    //    return Array.prototype.push.apply(this, arguments);
+                    //};
                     this.__scanFile(content, this.__file);
                 }.bind(this),
                 
@@ -113,7 +120,7 @@ FileScanner.prototype = {
     
     /**
      * @param {boolean} options
-     * @param {string} symbol
+     * @param {string} options.symbol
      * @param [options.depType]
      * @param [options.wildcard = false]
      * @param [options.meta]
@@ -310,7 +317,8 @@ FileScanner.prototype = {
             //scan css
             var cssHash = this.__symbolsMap.typesHash.css;
             if (cssHash) {
-                var cssRe = new RegExp('\\b(?:' + Object.keys(cssHash).join('|') + ')(?![\\d\\w\\-_])', 'g');
+                var classes = Object.keys(cssHash).filter(function(cls){ return cls.indexOf('.') === -1; });
+                var cssRe = new RegExp('\\b(?:' + classes.join('|') + ')(?![\\d\\w\\-_])', 'g');
                 var cssMatch = content.match(cssRe);
                 if (cssMatch) {
                     cssMatch.forEach(function(symbol) {
