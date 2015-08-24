@@ -67,12 +67,12 @@ var FileScanner = function(file, symbolsMap, packages, options) {
             var promise = readFile(this.__file, 'utf8').then(
                 function(content) {
                     //this.__rawSymbols.push = function(symbol) {
-                    //    if (symbol.symbol === 'b-sbutton set_system mod_main') {
+                    //    if (symbol.symbol === 'common') {
                     //        console.trace();
                     //        process.exit();
                     //    }
-                    //    return Array.prototype.push.apply(this, arguments);
-                    //};
+                    //    return Array.prototype.push.apply(this.__rawSymbols, arguments);
+                    //}.bind(this);
                     this.__scanFile(content, this.__file);
                 }.bind(this),
                 
@@ -289,7 +289,7 @@ FileScanner.prototype = {
                 if (path.extname(include) === '.js') {
                     this.__rawSymbols.push({
                         symbol: '!!' + path.join(path.dirname(filePath), include),
-                        meta: {bower: true},
+                        meta: {bower: true, analyze: false},
                         depType: 'follow'
                     });
                 }

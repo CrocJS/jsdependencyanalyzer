@@ -310,7 +310,7 @@ DependenciesCalculator.prototype = {
                 files: [symbolOrFile],
                 symbols: [symbol],
                 types: ['other'],
-                analyze: [symbolOrFile],
+                analyze: meta && meta.analyze === false ? [] : [symbolOrFile],
                 weight: {},
                 ignore: {},
                 dependencies: {}
